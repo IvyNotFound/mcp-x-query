@@ -54,7 +54,8 @@ The tweet URL should be https://x.com/<username>/status/${tweetId}.`;
   const result = await client.query(prompt, TweetSchema, "tweet");
 
   // If Grok couldn't find the tweet it returns id="" — surface this as an error.
-  if (!result.id || result.id !== tweetId) {
+  // .trim() guards against Grok returning the ID with a stray whitespace character.
+  if (!result.id || result.id.trim() !== tweetId) {
     throw new Error(`Tweet not found: ID "${tweetId}" does not exist, has been deleted, or is not accessible.`);
   }
 

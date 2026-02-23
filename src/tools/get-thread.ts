@@ -69,7 +69,9 @@ export async function getThread(
   const verbose = input.verbose ?? false;
 
   // Verbose mode caps at 10 tweets because the full schema is much larger.
-  const maxTweets = input.max_tweets ?? (verbose ? 10 : 20);
+  // The cap is enforced even when the caller explicitly passes a higher value.
+  const requestedMax = input.max_tweets ?? (verbose ? 10 : 20);
+  const maxTweets = verbose ? Math.min(requestedMax, 10) : requestedMax;
 
   // Build a fields section appropriate for the selected mode.
   const fieldsPrompt = verbose
