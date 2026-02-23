@@ -17,6 +17,7 @@
 import OpenAI from "openai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ZodType } from "zod";
+import { GrokAuthError, GrokRateLimitError } from "./errors.js";
 
 /** Model identifier for the Grok variant used by this server. */
 const MODEL = "grok-4-1-fast-non-reasoning";
@@ -53,10 +54,33 @@ export class GrokClient {
    */
   constructor(apiKey: string) {
     // Use the OpenAI client library with xAI's compatible endpoint.
+    // maxRetries: 3 — the SDK retries 429 and 5xx automatically with backoff.
     this.openai = new OpenAI({
       apiKey,
       baseURL: "https://api.x.ai/v1",
+      maxRetries: 3,
     });
+  }
+
+  /**
+   * Converts OpenAI SDK API errors into typed Grok errors and re-throws.
+   * Always throws — return type `never` ensures TypeScript treats call sites
+   * as unreachable after this call (no spurious "possibly undefined" errors).
+   */
+  private rethrowApiError(err: unknown): never {
+    if (
+      err instanceof OpenAI.AuthenticationError ||
+      err instanceof OpenAI.PermissionDeniedError
+    ) {
+      throw new GrokAuthError();
+    }
+    if (err instanceof OpenAI.RateLimitError) {
+      // The SDK exhausted all retries — surface a user-friendly rate limit error.
+      const retryAfter = err.headers?.get("retry-after");
+      const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+      throw new GrokRateLimitError(retryAfterMs);
+    }
+    throw err;
   }
 
   /**
@@ -103,21 +127,26 @@ export class GrokClient {
       Object.assign(tool, xSearchParams);
     }
 
-    const response = await this.openai.responses.create({
-      model: MODEL,
-      input: [{ role: "user", content: prompt }],
-      tools: [tool as unknown as OpenAI.Responses.Tool],
-      max_output_tokens: 16384, // Large enough for threads / bulk tweet arrays.
-      text: {
-        format: {
-          type: "json_schema",
-          name: schemaName,
-          schema: flatSchema as Record<string, unknown>,
-          // strict:false — some optional fields may be absent; Zod handles validation.
-          strict: false,
-        } as unknown as OpenAI.Responses.ResponseTextConfig["format"],
-      },
-    });
+    let response: Awaited<ReturnType<typeof this.openai.responses.create>>;
+    try {
+      response = await this.openai.responses.create({
+        model: MODEL,
+        input: [{ role: "user", content: prompt }],
+        tools: [tool as unknown as OpenAI.Responses.Tool],
+        max_output_tokens: 16384, // Large enough for threads / bulk tweet arrays.
+        text: {
+          format: {
+            type: "json_schema",
+            name: schemaName,
+            schema: flatSchema as Record<string, unknown>,
+            // strict:false — some optional fields may be absent; Zod handles validation.
+            strict: false,
+          } as unknown as OpenAI.Responses.ResponseTextConfig["format"],
+        },
+      });
+    } catch (err) {
+      this.rethrowApiError(err);
+    }
 
     const text = response.output_text;
     if (!text) {
@@ -125,14 +154,18 @@ export class GrokClient {
     }
 
     // Attempt to parse the JSON; if it fails the response was likely truncated.
+    // Then validate against the Zod schema so structurally invalid responses
+    // are caught here rather than silently corrupting downstream data.
+    let parsed: unknown;
     try {
-      return JSON.parse(text) as T;
+      parsed = JSON.parse(text);
     } catch {
       const truncated = text.length > 200 ? text.slice(-200) : text;
       throw new Error(
         `Grok response JSON is malformed (likely truncated). Last 200 chars: ...${truncated}`
       );
     }
+    return schema.parse(parsed);
   }
 
   /**
@@ -154,13 +187,13 @@ export class GrokClient {
     if (!mediaUrl) return "";
 
     const contextLine = tweetText
-      ? `Ce média provient d'un tweet dont le texte est : "${tweetText}". `
+      ? `This media comes from a tweet with the following text: "${tweetText}". `
       : "";
 
     const prompt =
       mediaType === "video"
-        ? `${contextLine}Décris en détail ce que montre cette vignette de vidéo (sujet, contexte, éléments visuels importants). Réponds en français.`
-        : `${contextLine}Décris en détail le contenu de cette image (sujet, texte visible, contexte, éléments importants). Réponds en français.`;
+        ? `${contextLine}Describe in detail what this video thumbnail shows (subject, context, important visual elements).`
+        : `${contextLine}Describe in detail the content of this image (subject, visible text, context, important elements).`;
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -179,7 +212,14 @@ export class GrokClient {
 
       return response.choices[0]?.message?.content?.trim() ?? "";
     } catch (err) {
-      // L'analyse est optionnelle — ne pas bloquer le résultat du tweet.
+      // Auth errors are fatal — rethrow so the caller surfaces them properly.
+      if (
+        err instanceof OpenAI.AuthenticationError ||
+        err instanceof OpenAI.PermissionDeniedError
+      ) {
+        throw new GrokAuthError();
+      }
+      // All other failures are non-fatal: media analysis is optional.
       console.error(
         `[mcp-x-query] analyzeMedia failed for ${mediaUrl}:`,
         err instanceof Error ? err.message : String(err)
