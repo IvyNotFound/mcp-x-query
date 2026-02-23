@@ -1,0 +1,73 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MCP tool input schemas > analyze_sentiment input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > analyze_thread input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > extract_links input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_list_tweets input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_thread input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_trending input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_tweet input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_tweet_replies input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_user_mentions input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_user_profile input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > get_user_tweets input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;
+
+exports[`MCP tool input schemas > search_tweets input schema matches snapshot 1`] = `
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+}
+`;

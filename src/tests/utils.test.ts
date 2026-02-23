@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractTweetId, sanitizeUsername, escapeForPrompt } from "../lib/utils.js";
+import { extractTweetId, sanitizeUsername, escapeForPrompt, extractListId, computeNextCursor } from "../lib/utils.js";
 
 describe("extractTweetId", () => {
   it("returns raw ID unchanged", () => {
@@ -52,6 +52,44 @@ describe("sanitizeUsername", () => {
 
   it("only removes the first @", () => {
     expect(sanitizeUsername("@user@name")).toBe("user@name");
+  });
+});
+
+describe("extractListId", () => {
+  it("returns raw numeric ID unchanged", () => {
+    expect(extractListId("1234567890")).toBe("1234567890");
+  });
+
+  it("extracts ID from x.com list URL", () => {
+    expect(extractListId("https://x.com/i/lists/9876543210")).toBe("9876543210");
+  });
+
+  it("extracts ID from twitter.com list URL", () => {
+    expect(extractListId("https://twitter.com/i/lists/1111222233")).toBe("1111222233");
+  });
+
+  it("throws for a non-numeric string", () => {
+    expect(() => extractListId("not-a-list")).toThrow("Invalid list ID");
+  });
+});
+
+describe("computeNextCursor", () => {
+  it("returns undefined for an empty array", () => {
+    expect(computeNextCursor([])).toBeUndefined();
+  });
+
+  it("returns the only ID for a single-element array", () => {
+    expect(computeNextCursor([{ id: "12345" }])).toBe("12345");
+  });
+
+  it("returns the smallest (oldest) ID in the array", () => {
+    const tweets = [{ id: "9000000000" }, { id: "7000000000" }, { id: "8000000000" }];
+    expect(computeNextCursor(tweets)).toBe("7000000000");
+  });
+
+  it("handles large snowflake IDs correctly via BigInt comparison", () => {
+    const tweets = [{ id: "1585841080431321088" }, { id: "1585841080431321087" }];
+    expect(computeNextCursor(tweets)).toBe("1585841080431321087");
   });
 });
 
