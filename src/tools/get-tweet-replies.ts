@@ -31,6 +31,16 @@ export const GetTweetRepliesInput = z.object({
     .default(10)
     .optional()
     .describe("Maximum number of replies to return (default: 10)"),
+  from_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
+    .optional()
+    .describe("Start date in YYYY-MM-DD format"),
+  to_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
+    .optional()
+    .describe("End date in YYYY-MM-DD format"),
 });
 
 /**
@@ -47,12 +57,20 @@ export async function getTweetReplies(
   const tweetId = extractTweetId(input.tweet_id_or_url);
   const maxResults = input.max_results ?? 10;
 
-  const prompt = `Find the replies to tweet ID ${tweetId} on Twitter/X.
+  const dateRange =
+    input.from_date || input.to_date
+      ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
+      : "";
+
+  const prompt = `Find the replies to tweet ID ${tweetId} on Twitter/X${dateRange}.
 Return up to ${maxResults} replies as a JSON object with a "tweets" array.
 Each reply should include: id, url, author (username, display_name, verified), text, created_at,
 metrics (likes, retweets, replies), in_reply_to (tweet_id: "${tweetId}"), is_retweet: false.
 Sort replies by engagement (most liked/replied first).`;
 
   // No x_search handle filter here — replies can come from any account.
-  return client.query(prompt, TweetArraySchema, "tweet_array");
+  return client.query(prompt, TweetArraySchema, "tweet_array", {
+    from_date: input.from_date,
+    to_date: input.to_date,
+  });
 }

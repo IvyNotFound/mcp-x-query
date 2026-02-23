@@ -95,7 +95,7 @@ describe.skipIf(!HAS_API_KEY)(
     });
 
     // ── Tool discovery ────────────────────────────────────────────────────────
-    it("exposes exactly 10 tools", async () => {
+    it("exposes exactly 11 tools", async () => {
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name);
       expect(names).toEqual(
@@ -110,9 +110,10 @@ describe.skipIf(!HAS_API_KEY)(
           "analyze_sentiment",
           "analyze_thread",
           "extract_links",
+          "get_user_mentions",
         ])
       );
-      expect(tools).toHaveLength(10);
+      expect(tools).toHaveLength(11);
     });
 
     // ── Error cases ───────────────────────────────────────────────────────────

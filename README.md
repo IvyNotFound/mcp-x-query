@@ -34,15 +34,16 @@ Connect this server to Claude Desktop (or any MCP-compatible host) and ask quest
 | Tool | Description |
 |------|-------------|
 | `get_tweet` | Retrieve a single tweet by ID or URL — images/videos auto-analyzed by Grok Vision |
-| `get_tweet_replies` | Get replies to a tweet, sorted by engagement |
-| `get_user_tweets` | Recent tweets from a user, with optional date range |
+| `get_tweet_replies` | Get replies to a tweet, sorted by engagement, with optional date range |
+| `get_user_tweets` | Recent tweets from a user, with optional date range and media enrichment |
 | `get_user_profile` | Full profile: bio, followers, pinned tweet, etc. |
-| `search_tweets` | Full-text search with Twitter operators & date range |
+| `search_tweets` | Full-text search with Twitter operators, date range, and media enrichment |
 | `get_thread` | Full conversation thread reconstructed from any tweet |
-| `get_trending` | Current trending topics, optionally filtered by category |
-| `analyze_sentiment` | Sentiment analysis on a corpus of tweets (by account or search query) |
+| `get_trending` | Current trending topics, optionally filtered by category and country |
+| `analyze_sentiment` | Sentiment analysis on a corpus of tweets (by query or account, with language filter) |
 | `analyze_thread` | Full analysis of a thread: sentiment, key arguments, summary |
 | `extract_links` | Extract and summarize all external links shared by an account |
+| `get_user_mentions` | Tweets from other accounts mentioning a user, with optional date range |
 
 ---
 
@@ -91,16 +92,18 @@ When the tweet contains images, videos, or GIFs, each media item is automaticall
 
 ### `get_tweet_replies`
 
-Returns the most-engaged replies to a tweet.
+Returns the most-engaged replies to a tweet, optionally filtered by date.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `tweet_id_or_url` | string | Yes | Tweet ID or URL |
 | `max_results` | number | No | 1–100, default 10 |
+| `from_date` | string | No | YYYY-MM-DD |
+| `to_date` | string | No | YYYY-MM-DD |
 
 ### `get_user_tweets`
 
-Fetches a user's recent tweets and retweets (newest first).
+Fetches a user's recent tweets and retweets (newest first). Pass `enrich_media: true` to have each media item analyzed by Grok Vision (increases latency).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -108,6 +111,7 @@ Fetches a user's recent tweets and retweets (newest first).
 | `max_results` | number | No | 1–100, default 10 |
 | `from_date` | string | No | YYYY-MM-DD |
 | `to_date` | string | No | YYYY-MM-DD |
+| `enrich_media` | boolean | No | `true` = add `media_summary` via Grok Vision (slower) |
 
 ### `get_user_profile`
 
@@ -119,7 +123,7 @@ Returns full profile information including bio, counters, and pinned tweet.
 
 ### `search_tweets`
 
-Full-text search supporting [Twitter search operators](https://help.twitter.com/en/using-x/x-advanced-search) (`from:`, `to:`, `-is:retweet`, `lang:`, `#hashtag`, etc.).
+Full-text search supporting [Twitter search operators](https://help.twitter.com/en/using-x/x-advanced-search) (`from:`, `to:`, `-is:retweet`, `lang:`, `#hashtag`, etc.). Pass `enrich_media: true` for Grok Vision analysis of each media item.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -127,6 +131,7 @@ Full-text search supporting [Twitter search operators](https://help.twitter.com/
 | `max_results` | number | No | 1–100, default 10 |
 | `from_date` | string | No | YYYY-MM-DD |
 | `to_date` | string | No | YYYY-MM-DD |
+| `enrich_media` | boolean | No | `true` = add `media_summary` via Grok Vision (slower) |
 
 ### `get_thread`
 
@@ -140,11 +145,12 @@ Reconstructs a full conversation thread from any tweet in the chain (root, mid-t
 
 ### `get_trending`
 
-Returns currently trending topics on Twitter/X.
+Returns currently trending topics on Twitter/X. Results are cached for 5 minutes to avoid redundant API calls.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `category` | string | No | e.g. `"technology"`, `"sports"`, `"politics"` |
+| `country` | string | No | e.g. `"France"`, `"United States"`, `"worldwide"` |
 
 ### `analyze_sentiment`
 
@@ -152,10 +158,12 @@ Performs sentiment analysis on a corpus of tweets retrieved via a search query o
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | string | Yes | Search query or `from:username` |
-| `max_tweets` | number | No | 1–100, default 50 |
+| `query` | string | Yes | Search query (Twitter operators supported) |
+| `username` | string | No | Restrict analysis to tweets from this account (with or without `@`) |
+| `max_tweets` | number | No | 1–100, default 30 |
 | `from_date` | string | No | YYYY-MM-DD |
 | `to_date` | string | No | YYYY-MM-DD |
+| `language` | string | No | BCP-47 language code filter (e.g. `"fr"`, `"en"`) |
 
 ### `analyze_thread`
 
@@ -173,7 +181,18 @@ Extracts all external URLs shared by a Twitter account (or matching a search que
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `username` | string | Yes | Handle with or without `@` |
-| `max_tweets` | number | No | 1–100, default 20 |
+| `max_tweets` | number | No | 1–100, default 50 |
+| `from_date` | string | No | YYYY-MM-DD |
+| `to_date` | string | No | YYYY-MM-DD |
+
+### `get_user_mentions`
+
+Returns tweets from other accounts that mention a given user. Useful for monitoring brand mentions, replies from the community, or tracking conversations around a specific handle.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `username` | string | Yes | Handle to find mentions for (with or without `@`) |
+| `max_results` | number | No | 1–100, default 10 |
 | `from_date` | string | No | YYYY-MM-DD |
 | `to_date` | string | No | YYYY-MM-DD |
 
@@ -223,11 +242,12 @@ The TypeScript source lives in `src/`. Compiled output goes to `dist/` (gitignor
 
 ```
 src/
-├── index.ts              # MCP server entry point — tool registration & startup (10 tools)
+├── index.ts              # MCP server entry point — tool registration & startup (11 tools)
 ├── lib/
 │   ├── grok-client.ts    # Grok API wrapper (OpenAI SDK + x_search tool, maxRetries: 3)
 │   ├── errors.ts         # Typed error hierarchy: GrokError, GrokAuthError, GrokRateLimitError
-│   └── utils.ts          # Input helpers: URL→ID extraction, @ stripping
+│   ├── utils.ts          # Input helpers: URL→ID extraction, @ stripping, escapeForPrompt
+│   └── cache.ts          # TtlCache<K,V>: in-memory TTL cache (used by get_trending, get_user_profile)
 ├── schemas/
 │   ├── tweet.ts          # TweetSchema, ThreadSchema, TweetArraySchema, MediaSchema
 │   ├── user.ts           # UserProfileSchema
@@ -245,7 +265,8 @@ src/
     ├── search-tweets.ts
     ├── analyze-sentiment.ts
     ├── analyze-thread.ts
-    └── extract-links.ts
+    ├── extract-links.ts
+    └── get-user-mentions.ts
 ```
 
 ---
@@ -269,8 +290,9 @@ npm test
 
 | File | Type | Requires API key |
 |------|------|-----------------|
-| `src/tests/utils.test.ts` | Unit | No |
-| `src/tests/tools.test.ts` | Unit (mocked) — 58 tests | No |
+| `src/tests/utils.test.ts` | Unit — 17 tests | No |
+| `src/tests/cache.test.ts` | Unit — 7 tests | No |
+| `src/tests/tools.test.ts` | Unit (mocked) — 78 tests | No |
 | `src/tests/mcp.test.ts` | Integration — 8 tests (auto-skipped without key) | Yes |
 
 ---
@@ -281,7 +303,7 @@ npm test
 MCP Host (e.g. Claude Desktop)
         │  stdio (JSON-RPC)
         ▼
-  src/index.ts  ←── registers 10 tools, wraps errors via run()
+  src/index.ts  ←── registers 11 tools, wraps errors via run()
         │
         ▼
   GrokClient.query()                GrokClient.analyzeMedia()
@@ -300,6 +322,24 @@ MCP Host (e.g. Claude Desktop)
 - **Typed error hierarchy**: `src/lib/errors.ts` defines `GrokError`, `GrokAuthError` (401), and `GrokRateLimitError` (429). The `run()` helper discriminates these for better log messages and always returns a valid MCP response shape.
 - **Media enrichment**: `get_tweet` performs a second API call via `GrokClient.analyzeMedia()` after fetching. For videos the thumbnail frame is used; for images/GIFs the direct URL. The call is fire-and-forget safe — failures are logged and silently skipped so the tweet is always returned.
 - **Single-call analysis tools**: `analyze_sentiment`, `analyze_thread`, and `extract_links` each use a single `client.query()` call — `x_search` fetches and Grok analyses in the same inference step.
+
+---
+
+## Security
+
+Several hardening measures are built into the server to protect against common attack vectors:
+
+| Measure | Where | What it does |
+|---------|-------|-------------|
+| **API key validation** | `src/index.ts` | Rejects keys that don't match `/^xai-[A-Za-z0-9]{40,}$/` at startup |
+| **Prompt injection mitigation** | `src/lib/utils.ts` — `escapeForPrompt()` | Replaces `<`/`>` with `‹`/`›` Unicode in all free-text inputs (query, category, language) before they are inserted into prompts |
+| **Username sanitisation** | `src/lib/utils.ts` — `sanitizeUsername()` | Strips `@` and enforces alphanumeric + underscore only |
+| **Tweet ID validation** | `src/lib/utils.ts` — `extractTweetId()` | Throws if the extracted ID is not purely numeric (`^\d+$`) |
+| **Input length cap** | Zod schemas | `query` fields are capped at 500 characters |
+| **Date format validation** | Zod schemas | All `from_date`/`to_date` fields require `YYYY-MM-DD` format via regex |
+| **API timeouts** | `src/lib/grok-client.ts` | `timeout: 30_000` ms on all API calls |
+| **Media domain whitelist** | `src/lib/grok-client.ts` | `analyzeMedia()` only accepts URLs from a fixed set of trusted domains (`x.com`, `twimg.com`, etc.) |
+| **TTL cache** | `src/lib/cache.ts` | Trending topics (5 min) and user profiles (10 min) are cached to reduce API surface area |
 
 ---
 
