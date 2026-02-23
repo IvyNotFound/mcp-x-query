@@ -21,7 +21,7 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { TweetArraySchema } from "../schemas/tweet.js";
-import { escapeForPrompt } from "../lib/utils.js";
+import { escapeForPrompt, computeNextCursor } from "../lib/utils.js";
 
 /** MCP input schema for the search_tweets tool. */
 export const SearchTweetsInput = z.object({
@@ -50,6 +50,13 @@ export const SearchTweetsInput = z.object({
     .describe(
       "When true, each tweet's media items are analysed with Grok Vision and a media_summary field is added. Increases latency."
     ),
+  cursor: z
+    .string()
+    .regex(/^\d+$/, "Cursor must be a numeric tweet ID")
+    .optional()
+    .describe(
+      "Pagination cursor: tweet ID returned as next_cursor in the previous response. Pass it to fetch the next (older) page."
+    ),
 });
 
 /**
@@ -71,7 +78,11 @@ export async function searchTweets(
       ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
       : "";
 
-  const prompt = `Search Twitter/X for tweets matching the query below${dateRange}.
+  const cursorInstruction = input.cursor
+    ? ` Only return tweets with a numeric ID strictly less than ${input.cursor} (pagination: older tweets only).`
+    : "";
+
+  const prompt = `Search Twitter/X for tweets matching the query below${dateRange}.${cursorInstruction}
 <query>${escapeForPrompt(input.query)}</query>
 Return up to ${maxResults} relevant tweets as a JSON object with a "tweets" array.
 For each tweet include: id, url, author (username, display_name, verified), text, created_at,
@@ -103,5 +114,5 @@ Sort by relevance and engagement.`;
     );
   }
 
-  return result;
+  return { ...result, next_cursor: computeNextCursor(result.tweets) };
 }
