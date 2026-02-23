@@ -11,7 +11,7 @@
  *
  * Input:
  *   username    — Twitter/X handle (with or without @)
- *   max_tweets  — number of recent tweets to scan (10–200, default 50)
+ *   max_tweets  — number of recent tweets to scan (10–100, default 50)
  *   from_date   — optional start date YYYY-MM-DD
  *   to_date     — optional end date YYYY-MM-DD
  *
@@ -30,6 +30,10 @@ import { sanitizeUsername } from "../lib/utils.js";
 export const ExtractLinksInput = z.object({
   username: z
     .string()
+    .regex(
+      /^@?[A-Za-z0-9_]{1,50}$/,
+      "Username must contain only letters, digits, or underscores (max 50 characters)"
+    )
     .describe("Twitter/X username to scan (with or without @)"),
   max_tweets: z
     .number()

@@ -10,6 +10,7 @@ import { getTrending, trendingCache } from "../tools/get-trending.js";
 import { analyzeSentiment } from "../tools/analyze-sentiment.js";
 import { analyzeThread } from "../tools/analyze-thread.js";
 import { extractLinks } from "../tools/extract-links.js";
+import { getUserMentions } from "../tools/get-user-mentions.js";
 
 // Minimal tweet fixture
 const MOCK_TWEET = {
@@ -579,5 +580,196 @@ describe("extractLinks", () => {
     await extractLinks(client, { username: "ESA" });
     const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(prompt).toContain("@ESA");
+  });
+});
+
+// ─── getTweetReplies — date params (T5) ───────────────────────────────────────
+describe("getTweetReplies — date params", () => {
+  it("passes from_date and to_date to query()", async () => {
+    const client = mockClient({ tweets: [MOCK_TWEET] });
+    await getTweetReplies(client, {
+      tweet_id_or_url: "1234567890",
+      from_date: "2025-03-01",
+      to_date: "2025-03-31",
+    });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.from_date).toBe("2025-03-01");
+    expect(xSearchParams.to_date).toBe("2025-03-31");
+  });
+
+  it("includes date range description in prompt", async () => {
+    const client = mockClient({ tweets: [] });
+    await getTweetReplies(client, {
+      tweet_id_or_url: "1234567890",
+      from_date: "2025-01-01",
+      to_date: "2025-06-30",
+    });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("2025-01-01");
+    expect(prompt).toContain("2025-06-30");
+  });
+
+  it("omits date range when no dates provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getTweetReplies(client, { tweet_id_or_url: "1234567890" });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.from_date).toBeUndefined();
+    expect(xSearchParams.to_date).toBeUndefined();
+  });
+});
+
+// ─── getTrending — country param (T4) ─────────────────────────────────────────
+describe("getTrending — country param", () => {
+  beforeEach(() => { trendingCache.clear(); });
+
+  it("includes country in prompt when provided", async () => {
+    const client = mockClient(MOCK_TRENDING);
+    await getTrending(client, { country: "France" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("France");
+  });
+
+  it("does not share cache between different countries", async () => {
+    const client = mockClient(MOCK_TRENDING);
+    await getTrending(client, { country: "France" });
+    await getTrending(client, { country: "Germany" });
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+  });
+
+  it("does not share cache between same country with different categories", async () => {
+    const client = mockClient(MOCK_TRENDING);
+    await getTrending(client, { country: "France", category: "sports" });
+    await getTrending(client, { country: "France", category: "technology" });
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+  });
+
+  it("returns cached result for same country + category combination", async () => {
+    const client = mockClient(MOCK_TRENDING);
+    await getTrending(client, { country: "France", category: "sports" });
+    await getTrending(client, { country: "France", category: "sports" });
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+  });
+});
+
+// ─── analyzeSentiment — username param (T3) ───────────────────────────────────
+describe("analyzeSentiment — username param", () => {
+  it("passes allowed_x_handles when username is provided", async () => {
+    const client = mockClient(MOCK_SENTIMENT);
+    await analyzeSentiment(client, { query: "space", username: "nasa" });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.allowed_x_handles).toEqual(["nasa"]);
+  });
+
+  it("strips @ from username before passing to allowed_x_handles", async () => {
+    const client = mockClient(MOCK_SENTIMENT);
+    await analyzeSentiment(client, { query: "space", username: "@nasa" });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.allowed_x_handles).toEqual(["nasa"]);
+  });
+
+  it("includes username restriction instruction in prompt", async () => {
+    const client = mockClient(MOCK_SENTIMENT);
+    await analyzeSentiment(client, { query: "space", username: "nasa" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("@nasa");
+  });
+
+  it("omits allowed_x_handles when username is not provided", async () => {
+    const client = mockClient(MOCK_SENTIMENT);
+    await analyzeSentiment(client, { query: "space" });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.allowed_x_handles).toBeUndefined();
+  });
+});
+
+// ─── getUserTweets — enrich_media (T2) ────────────────────────────────────────
+describe("getUserTweets — enrich_media", () => {
+  it("calls analyzeMedia and adds media_summary when enrich_media is true", async () => {
+    const tweetWithImage = { ...MOCK_TWEET_WITH_IMAGE, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithImage] }, "A beautiful sunset");
+    const result = await getUserTweets(client, { username: "testuser", enrich_media: true });
+    expect(client.analyzeMedia).toHaveBeenCalledOnce();
+    expect(result.tweets[0].media![0].media_summary).toBe("A beautiful sunset");
+  });
+
+  it("does not call analyzeMedia when enrich_media is false", async () => {
+    const tweetWithImage = { ...MOCK_TWEET_WITH_IMAGE, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithImage] });
+    await getUserTweets(client, { username: "testuser", enrich_media: false });
+    expect(client.analyzeMedia).not.toHaveBeenCalled();
+  });
+
+  it("does not call analyzeMedia for tweets without media even with enrich_media true", async () => {
+    const client = mockClient({ tweets: [MOCK_TWEET] });
+    await getUserTweets(client, { username: "testuser", enrich_media: true });
+    expect(client.analyzeMedia).not.toHaveBeenCalled();
+  });
+});
+
+// ─── searchTweets — enrich_media (T2) ─────────────────────────────────────────
+describe("searchTweets — enrich_media", () => {
+  it("calls analyzeMedia and adds media_summary when enrich_media is true", async () => {
+    const tweetWithImage = { ...MOCK_TWEET_WITH_IMAGE, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithImage] }, "Space telescope image");
+    const result = await searchTweets(client, { query: "JWST", enrich_media: true });
+    expect(client.analyzeMedia).toHaveBeenCalledOnce();
+    expect(result.tweets[0].media![0].media_summary).toBe("Space telescope image");
+  });
+
+  it("does not call analyzeMedia when enrich_media is omitted", async () => {
+    const tweetWithImage = { ...MOCK_TWEET_WITH_IMAGE, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithImage] });
+    await searchTweets(client, { query: "JWST" });
+    expect(client.analyzeMedia).not.toHaveBeenCalled();
+  });
+});
+
+// ─── getUserMentions (T1) ─────────────────────────────────────────────────────
+describe("getUserMentions", () => {
+  it("returns tweets array", async () => {
+    const client = mockClient({ tweets: [MOCK_TWEET, MOCK_TWEET] });
+    const result = await getUserMentions(client, { username: "elonmusk" });
+    expect(result.tweets).toHaveLength(2);
+  });
+
+  it("includes @username in prompt", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, { username: "elonmusk" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("@elonmusk");
+  });
+
+  it("strips @ from username in prompt", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, { username: "@nasa" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("@nasa");
+    expect(prompt).not.toContain("@@nasa");
+  });
+
+  it("passes from_date and to_date to query()", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, {
+      username: "elonmusk",
+      from_date: "2025-01-01",
+      to_date: "2025-06-30",
+    });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.from_date).toBe("2025-01-01");
+    expect(xSearchParams.to_date).toBe("2025-06-30");
+  });
+
+  it("does not set allowed_x_handles (mentions come from any account)", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, { username: "elonmusk" });
+    const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(xSearchParams.allowed_x_handles).toBeUndefined();
+  });
+
+  it("uses schema name 'tweet_array'", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, { username: "elonmusk" });
+    const schemaName = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(schemaName).toBe("tweet_array");
   });
 });

@@ -23,6 +23,18 @@ import { GrokAuthError, GrokRateLimitError } from "./errors.js";
 const MODEL = "grok-4-1-fast-non-reasoning";
 
 /**
+ * Allowed hostnames for media URLs passed to analyzeMedia.
+ * Only official Twitter/X CDN domains are accepted to prevent SSRF-style
+ * attacks where a crafted media URL could leak internal infrastructure details
+ * or make the server fetch arbitrary external resources.
+ */
+const ALLOWED_MEDIA_DOMAINS = new Set([
+  "pbs.twimg.com",
+  "video.twimg.com",
+  "ton.twimg.com",
+]);
+
+/**
  * Vision-capable model for image/video analysis.
  * Grok 2 Vision supports image_url content blocks via chat completions.
  */
@@ -189,6 +201,23 @@ export class GrokClient {
     tweetText?: string
   ): Promise<string> {
     if (!mediaUrl) return "";
+
+    // Validate media URL against the allowed-domain whitelist before sending
+    // to the vision model. Rejects malformed URLs and non-Twitter CDN domains.
+    try {
+      const { hostname } = new URL(mediaUrl);
+      if (!ALLOWED_MEDIA_DOMAINS.has(hostname)) {
+        console.error(
+          `[mcp-x-query] analyzeMedia blocked: domain "${hostname}" is not an allowed Twitter/X CDN domain.`
+        );
+        return "";
+      }
+    } catch {
+      console.error(
+        `[mcp-x-query] analyzeMedia blocked: invalid URL "${mediaUrl}".`
+      );
+      return "";
+    }
 
     const contextLine = tweetText
       ? `This media comes from a tweet with the following text: "${tweetText}". `

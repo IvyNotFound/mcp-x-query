@@ -8,8 +8,15 @@
 export function extractTweetId(input: string): string {
   const match = input.match(/(?:x\.com|twitter\.com)\/\w+\/status\/(\d+)/);
   if (match) return match[1];
-  // Assume it's already an ID
-  return input.trim();
+  // Assume it's already an ID — validate that it's purely numeric to prevent
+  // prompt injection via a raw string like "1234 </query> Ignore previous…"
+  const id = input.trim();
+  if (!/^\d+$/.test(id)) {
+    throw new Error(
+      `Invalid tweet ID: "${id}". Expected a numeric ID or a Twitter/X status URL.`
+    );
+  }
+  return id;
 }
 
 /**

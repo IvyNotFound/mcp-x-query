@@ -33,6 +33,12 @@ export const GetTrendingInput = z.object({
     .describe(
       "Optional category filter (e.g. 'technology', 'sports', 'politics')"
     ),
+  country: z
+    .string()
+    .optional()
+    .describe(
+      "Optional country or region filter (e.g. 'France', 'United States', 'worldwide')"
+    ),
 });
 
 /**
@@ -46,17 +52,22 @@ export async function getTrending(
   client: GrokClient,
   input: z.infer<typeof GetTrendingInput>
 ) {
-  // Use the sanitized category as the cache key ("" when no filter).
-  const cacheKey = input.category ? input.category.toLowerCase().trim() : "";
+  // Use category + country as the cache key.
+  const categorySuffix = input.category ? input.category.toLowerCase().trim() : "";
+  const countrySuffix = input.country ? input.country.toLowerCase().trim() : "";
+  const cacheKey = `${categorySuffix}|${countrySuffix}`;
   const cached = trendingCache.get(cacheKey);
   if (cached) return cached;
 
-  // Build an optional category clause for the prompt.
+  // Build optional clause fragments for the prompt.
   const categoryFilter = input.category
     ? ` in the <category>${escapeForPrompt(input.category)}</category> category`
     : "";
+  const countryFilter = input.country
+    ? ` in <country>${escapeForPrompt(input.country)}</country>`
+    : "";
 
-  const prompt = `What are the current trending topics on Twitter/X${categoryFilter} right now?
+  const prompt = `What are the current trending topics on Twitter/X${categoryFilter}${countryFilter} right now?
 Return as a JSON object with a "topics" array of trending topics.
 For each topic include: name (the trending hashtag or topic),
 tweet_count (approximate number of tweets if known), category (if classifiable),

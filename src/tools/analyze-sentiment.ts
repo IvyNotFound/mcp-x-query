@@ -27,13 +27,24 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { SentimentAnalysisSchema } from "../schemas/sentiment.js";
-import { escapeForPrompt } from "../lib/utils.js";
+import { escapeForPrompt, sanitizeUsername } from "../lib/utils.js";
 
 /** MCP input schema for the analyze_sentiment tool. */
 export const AnalyzeSentimentInput = z.object({
   query: z
     .string()
+    .max(500)
     .describe("Topic or search query to analyze (supports Twitter operators)"),
+  username: z
+    .string()
+    .regex(
+      /^@?[A-Za-z0-9_]{1,50}$/,
+      "Username must contain only letters, digits, or underscores (max 50 characters)"
+    )
+    .optional()
+    .describe(
+      "Optional Twitter/X username to restrict analysis to tweets from that account (with or without @)"
+    ),
   max_tweets: z
     .number()
     .int()
@@ -70,6 +81,8 @@ export async function analyzeSentiment(
   input: z.infer<typeof AnalyzeSentimentInput>
 ) {
   const maxTweets = input.max_tweets ?? 30;
+  const username = input.username ? sanitizeUsername(input.username) : undefined;
+
   // Language filter is passed as an explicit search constraint separate from
   // the query narrative — embedding `lang:xx` inside the quoted query string
   // is ambiguous and may be ignored by Grok's prompt parser.
@@ -80,8 +93,11 @@ export async function analyzeSentiment(
     input.from_date || input.to_date
       ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
       : "";
+  const usernameInstruction = username
+    ? `\nIMPORTANT: Restrict analysis to tweets authored by @${username} only.`
+    : "";
 
-  const prompt = `Search Twitter/X for ${maxTweets} recent tweets about the topic below${dateRange}.${langInstruction}
+  const prompt = `Search Twitter/X for ${maxTweets} recent tweets about the topic below${dateRange}.${langInstruction}${usernameInstruction}
 <query>${escapeForPrompt(input.query)}</query>
 
 Analyze the sentiment of this corpus and return a structured JSON object with exactly these fields:
@@ -99,6 +115,7 @@ Analyze the sentiment of this corpus and return a structured JSON object with ex
 Base your analysis strictly on the tweets retrieved. Do not fabricate content.`;
 
   return client.query(prompt, SentimentAnalysisSchema, "sentiment_analysis", {
+    allowed_x_handles: username ? [username] : undefined,
     from_date: input.from_date,
     to_date: input.to_date,
   });

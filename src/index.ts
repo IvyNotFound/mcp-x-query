@@ -4,7 +4,7 @@
  * This is the root of the MCP server. It:
  *  1. Validates the XAI_API_KEY environment variable (hard-fails without it).
  *  2. Creates a shared GrokClient that wraps the Grok API.
- *  3. Registers all ten MCP tools with their input schemas and descriptions.
+ *  3. Registers all eleven MCP tools with their input schemas and descriptions.
  *  4. Starts a stdio-based transport so that MCP hosts (e.g. Claude Desktop)
  *     can communicate with this server via standard input/output.
  *
@@ -38,6 +38,10 @@ import { GetTrendingInput, getTrending } from "./tools/get-trending.js";
 import { AnalyzeSentimentInput, analyzeSentiment } from "./tools/analyze-sentiment.js";
 import { AnalyzeThreadInput, analyzeThread } from "./tools/analyze-thread.js";
 import { ExtractLinksInput, extractLinks } from "./tools/extract-links.js";
+import {
+  GetUserMentionsInput,
+  getUserMentions,
+} from "./tools/get-user-mentions.js";
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -45,6 +49,12 @@ const apiKey = process.env.XAI_API_KEY;
 if (!apiKey) {
   console.error(
     "[mcp-x-query] Error: XAI_API_KEY environment variable is required."
+  );
+  process.exit(1);
+}
+if (!/^xai-[A-Za-z0-9]{40,}$/.test(apiKey)) {
+  console.error(
+    "[mcp-x-query] Error: XAI_API_KEY format is invalid. Expected: xai-<40+ alphanumeric characters>."
   );
   process.exit(1);
 }
@@ -104,18 +114,18 @@ server.tool(
   (input) => run(() => getTweet(grok, input))
 );
 
-// get_tweet_replies — fetch the most-engaged replies to a tweet
+// get_tweet_replies — fetch the most-engaged replies to a tweet, with optional date range
 server.tool(
   "get_tweet_replies",
-  "Get replies to a tweet by its ID or URL",
+  "Get replies to a tweet by its ID or URL, with optional date range (from_date/to_date)",
   GetTweetRepliesInput.shape,
   (input) => run(() => getTweetReplies(grok, input))
 );
 
-// get_user_tweets — timeline for a given handle, with optional date range
+// get_user_tweets — timeline for a given handle, with optional date range and media enrichment
 server.tool(
   "get_user_tweets",
-  "Get recent tweets from a Twitter/X user, with optional date range",
+  "Get recent tweets from a Twitter/X user, with optional date range and enrich_media (Grok Vision analysis)",
   GetUserTweetsInput.shape,
   (input) => run(() => getUserTweets(grok, input))
 );
@@ -128,10 +138,10 @@ server.tool(
   (input) => run(() => getUserProfile(grok, input))
 );
 
-// search_tweets — full-text search supporting Twitter operators
+// search_tweets — full-text search supporting Twitter operators, with optional media enrichment
 server.tool(
   "search_tweets",
-  "Search Twitter/X for tweets matching a query, with optional date range",
+  "Search Twitter/X for tweets matching a query, with optional date range and enrich_media (Grok Vision analysis)",
   SearchTweetsInput.shape,
   (input) => run(() => searchTweets(grok, input))
 );
@@ -144,10 +154,10 @@ server.tool(
   (input) => run(() => getThread(grok, input))
 );
 
-// get_trending — current trending topics, optionally filtered by category
+// get_trending — current trending topics, optionally filtered by category and country
 server.tool(
   "get_trending",
-  "Get currently trending topics on Twitter/X, with optional category filter",
+  "Get currently trending topics on Twitter/X, with optional category and country/region filter",
   GetTrendingInput.shape,
   (input) => run(() => getTrending(grok, input))
 );
@@ -174,6 +184,14 @@ server.tool(
   "Extract and summarize all external links shared by a Twitter/X user, with optional date range",
   ExtractLinksInput.shape,
   (input) => run(() => extractLinks(grok, input))
+);
+
+// get_user_mentions — tweets from other accounts mentioning a given user
+server.tool(
+  "get_user_mentions",
+  "Get recent tweets mentioning a Twitter/X user (@username), with optional date range",
+  GetUserMentionsInput.shape,
+  (input) => run(() => getUserMentions(grok, input))
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

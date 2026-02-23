@@ -25,7 +25,7 @@ import { escapeForPrompt } from "../lib/utils.js";
 
 /** MCP input schema for the search_tweets tool. */
 export const SearchTweetsInput = z.object({
-  query: z.string().describe("Search query (supports Twitter search operators)"),
+  query: z.string().max(500).describe("Search query (supports Twitter search operators)"),
   max_results: z
     .number()
     .int()
@@ -44,6 +44,12 @@ export const SearchTweetsInput = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("End date in YYYY-MM-DD format"),
+  enrich_media: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, each tweet's media items are analysed with Grok Vision and a media_summary field is added. Increases latency."
+    ),
 });
 
 /**
@@ -73,8 +79,29 @@ metrics (likes, retweets, replies, views if available), media if any, is_retweet
 Sort by relevance and engagement.`;
 
   // Pass date filters to x_search for precise temporal filtering.
-  return client.query(prompt, TweetArraySchema, "tweet_array", {
+  const result = await client.query(prompt, TweetArraySchema, "tweet_array", {
     from_date: input.from_date,
     to_date: input.to_date,
   });
+
+  // Optionally enrich media items with Grok Vision summaries.
+  if (input.enrich_media) {
+    result.tweets = await Promise.all(
+      result.tweets.map(async (tweet) => {
+        if (!tweet.media || tweet.media.length === 0) return tweet;
+        const enrichedMedia = await Promise.all(
+          tweet.media.map(async (item) => {
+            const urlToAnalyze =
+              item.type === "video" ? (item.thumbnail_url ?? item.url) : item.url;
+            if (!urlToAnalyze) return item;
+            const summary = await client.analyzeMedia(urlToAnalyze, item.type, tweet.text);
+            return summary ? { ...item, media_summary: summary } : item;
+          })
+        );
+        return { ...tweet, media: enrichedMedia };
+      })
+    );
+  }
+
+  return result;
 }
