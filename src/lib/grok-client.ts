@@ -1,0 +1,129 @@
+/**
+ * GrokClient — Thin wrapper around the Grok API (x.ai)
+ *
+ * Grok exposes an OpenAI-compatible API endpoint, so we reuse the `openai`
+ * npm package with a custom baseURL pointing to api.x.ai.
+ *
+ * The key capability used here is the `x_search` tool, which lets Grok search
+ * Twitter/X in real time as part of the model's response generation.
+ *
+ * Structured output:
+ *  Every call uses `text.format = { type: "json_schema", ... }` to force Grok
+ *  to return a JSON object that matches the provided Zod schema. We convert the
+ *  Zod schema to JSON Schema via `zod-to-json-schema` with `$refStrategy:"none"`
+ *  so that no `$ref` / `$defs` nodes are emitted (Grok rejects those).
+ */
+
+import OpenAI from "openai";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import type { ZodType } from "zod";
+
+/** Model identifier for the Grok variant used by this server. */
+const MODEL = "grok-4-1-fast-non-reasoning";
+
+/**
+ * Optional filters forwarded to the x_search tool.
+ * All fields are optional — omit any that are not needed.
+ */
+export interface XSearchParams {
+  /** Only return results from these Twitter handles. */
+  allowed_x_handles?: string[];
+  /** Exclude results from these Twitter handles. */
+  excluded_x_handles?: string[];
+  /** Return tweets posted on or after this date (YYYY-MM-DD). */
+  from_date?: string;
+  /** Return tweets posted on or before this date (YYYY-MM-DD). */
+  to_date?: string;
+  /** When true, Grok attempts to analyse video content in tweets. */
+  enable_video_understanding?: boolean;
+}
+
+export class GrokClient {
+  private openai: OpenAI;
+
+  /**
+   * @param apiKey  Your xAI API key (starts with "xai-").
+   *                Set via XAI_API_KEY environment variable.
+   */
+  constructor(apiKey: string) {
+    // Use the OpenAI client library with xAI's compatible endpoint.
+    this.openai = new OpenAI({
+      apiKey,
+      baseURL: "https://api.x.ai/v1",
+    });
+  }
+
+  /**
+   * Send a natural-language prompt to Grok and receive a typed, validated result.
+   *
+   * @param prompt       The instruction sent to Grok (role: "user").
+   * @param schema       Zod schema that describes the expected response shape.
+   * @param schemaName   Human-readable name for the schema (used as the JSON Schema $id).
+   * @param xSearchParams  Optional x_search filters (date range, handle allow/block lists…).
+   * @returns            Parsed and cast value conforming to `schema`.
+   *
+   * Throws if:
+   *  - Grok returns no text output.
+   *  - The response text is not valid JSON (e.g. truncated due to token limits).
+   */
+  async query<T>(
+    prompt: string,
+    schema: ZodType<T>,
+    schemaName: string,
+    xSearchParams?: XSearchParams
+  ): Promise<T> {
+    // Convert the Zod schema to a flat JSON Schema object.
+    // `$refStrategy:"none"` inlines all sub-schemas, preventing $ref / $defs
+    // nodes that the Grok structured-output endpoint does not support.
+    const rawSchema = zodToJsonSchema(schema, {
+      name: schemaName,
+      $refStrategy: "none",
+      target: "jsonSchema7",
+    });
+
+    // When a `name` is provided, zodToJsonSchema wraps the output under
+    // { definitions: { [name]: <actual schema> } }. Extract just the schema.
+    const definitions = (rawSchema as Record<string, unknown>).definitions as
+      | Record<string, unknown>
+      | undefined;
+    const flatSchema =
+      definitions?.[schemaName] ?? rawSchema;
+
+    // Build the x_search tool descriptor, merging in any caller-supplied filters.
+    const tool: Record<string, unknown> = { type: "x_search" };
+    if (xSearchParams) {
+      Object.assign(tool, xSearchParams);
+    }
+
+    const response = await this.openai.responses.create({
+      model: MODEL,
+      input: [{ role: "user", content: prompt }],
+      tools: [tool as unknown as OpenAI.Responses.Tool],
+      max_output_tokens: 16384, // Large enough for threads / bulk tweet arrays.
+      text: {
+        format: {
+          type: "json_schema",
+          name: schemaName,
+          schema: flatSchema as Record<string, unknown>,
+          // strict:false — some optional fields may be absent; Zod handles validation.
+          strict: false,
+        } as unknown as OpenAI.Responses.ResponseTextConfig["format"],
+      },
+    });
+
+    const text = response.output_text;
+    if (!text) {
+      throw new Error("Grok returned no text output.");
+    }
+
+    // Attempt to parse the JSON; if it fails the response was likely truncated.
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      const truncated = text.length > 200 ? text.slice(-200) : text;
+      throw new Error(
+        `Grok response JSON is malformed (likely truncated). Last 200 chars: ...${truncated}`
+      );
+    }
+  }
+}
