@@ -28,6 +28,7 @@ const MediaSchema = z.object({
   url: z.string(),
   thumbnail_url: z.string().optional(), // Video only: thumbnail frame URL
   alt_text: z.string().optional(),      // Accessibility description
+  media_summary: z.string().optional(), // AI-generated description (populated post-fetch, not by Grok x_search)
 });
 
 /** Minimal author info embedded inside every tweet object. */
