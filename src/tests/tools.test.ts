@@ -1,12 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { GrokClient } from "../lib/grok-client.js";
 import { getTweet } from "../tools/get-tweet.js";
 import { getThread } from "../tools/get-thread.js";
 import { searchTweets } from "../tools/search-tweets.js";
 import { getUserTweets } from "../tools/get-user-tweets.js";
 import { getTweetReplies } from "../tools/get-tweet-replies.js";
-import { getUserProfile } from "../tools/get-user-profile.js";
-import { getTrending } from "../tools/get-trending.js";
+import { getUserProfile, profileCache } from "../tools/get-user-profile.js";
+import { getTrending, trendingCache } from "../tools/get-trending.js";
 import { analyzeSentiment } from "../tools/analyze-sentiment.js";
 import { analyzeThread } from "../tools/analyze-thread.js";
 import { extractLinks } from "../tools/extract-links.js";
@@ -351,6 +351,8 @@ const MOCK_PROFILE = {
 };
 
 describe("getUserProfile", () => {
+  beforeEach(() => { profileCache.clear(); });
+
   it("returns user profile", async () => {
     const client = mockClient(MOCK_PROFILE);
     const result = await getUserProfile(client, { username: "testuser" });
@@ -372,6 +374,20 @@ describe("getUserProfile", () => {
     const xSearchParams = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][3];
     expect(xSearchParams.allowed_x_handles).toEqual(["someone"]);
   });
+
+  it("returns cached result on second call without querying the API", async () => {
+    const client = mockClient(MOCK_PROFILE);
+    await getUserProfile(client, { username: "cacheduser" });
+    await getUserProfile(client, { username: "cacheduser" });
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+  });
+
+  it("does not share cache between different usernames", async () => {
+    const client = mockClient(MOCK_PROFILE);
+    await getUserProfile(client, { username: "userone" });
+    await getUserProfile(client, { username: "usertwo" });
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+  });
 });
 
 // ─── getTrending ──────────────────────────────────────────────────────────────
@@ -383,6 +399,8 @@ const MOCK_TRENDING = {
 };
 
 describe("getTrending", () => {
+  beforeEach(() => { trendingCache.clear(); });
+
   it("returns trending topics array", async () => {
     const client = mockClient(MOCK_TRENDING);
     const result = await getTrending(client, {});
@@ -403,6 +421,20 @@ describe("getTrending", () => {
     const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     // No category filter in the prompt
     expect(prompt).not.toContain('in the "');
+  });
+
+  it("returns cached result on second call without querying the API", async () => {
+    const client = mockClient(MOCK_TRENDING);
+    await getTrending(client, {});
+    await getTrending(client, {});
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+  });
+
+  it("does not share cache between different categories", async () => {
+    const client = mockClient(MOCK_TRENDING);
+    await getTrending(client, { category: "sports" });
+    await getTrending(client, { category: "technology" });
+    expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
   });
 });
 

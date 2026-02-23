@@ -17,6 +17,12 @@ import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { UserProfileSchema } from "../schemas/user.js";
 import { sanitizeUsername } from "../lib/utils.js";
+import { TtlCache } from "../lib/cache.js";
+
+// User profiles change infrequently; a 10-minute TTL avoids duplicate API
+// calls when the same handle is resolved multiple times in a short session.
+// Exported so test suites can call profileCache.clear() between tests.
+export const profileCache = new TtlCache<string, z.infer<typeof UserProfileSchema>>(10 * 60_000);
 
 /** MCP input schema for the get_user_profile tool. */
 export const GetUserProfileInput = z.object({
@@ -37,6 +43,9 @@ export async function getUserProfile(
   // Strip leading "@" so the username is always in bare form (e.g. "elonmusk").
   const username = sanitizeUsername(input.username);
 
+  const cached = profileCache.get(username);
+  if (cached) return cached;
+
   const prompt = `Retrieve the Twitter/X profile information for @${username}.
 Return as a JSON object with: username, display_name, bio, location (if available),
 website (if available), verified (blue checkmark or other verification), profile_image_url (if available),
@@ -44,7 +53,9 @@ banner_url (if available), followers_count, following_count, tweet_count, create
 and pinned_tweet (if they have one pinned).`;
 
   // Restrict x_search to the target handle to improve result accuracy.
-  return client.query(prompt, UserProfileSchema, "user_profile", {
+  const result = await client.query(prompt, UserProfileSchema, "user_profile", {
     allowed_x_handles: [username],
   });
+  profileCache.set(username, result);
+  return result;
 }

@@ -18,3 +18,17 @@ export function extractTweetId(input: string): string {
 export function sanitizeUsername(input: string): string {
   return input.trim().replace(/^@/, "");
 }
+
+/**
+ * Sanitize a user-supplied string before embedding it in a Grok prompt.
+ *
+ * Angle brackets are replaced with their Unicode look-alikes (‹›) so that a
+ * malicious input like `</query> Ignore previous instructions` cannot close
+ * the XML-style delimiter used in prompts.  All other text is left intact.
+ *
+ * Usage in prompts:
+ *   `<query>${escapeForPrompt(userInput)}</query>`
+ */
+export function escapeForPrompt(input: string): string {
+  return input.trim().replace(/</g, "\u2039").replace(/>/g, "\u203a");
+}
