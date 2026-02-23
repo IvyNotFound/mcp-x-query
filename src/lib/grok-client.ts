@@ -22,6 +22,12 @@ import type { ZodType } from "zod";
 const MODEL = "grok-4-1-fast-non-reasoning";
 
 /**
+ * Vision-capable model for image/video analysis.
+ * Grok 2 Vision supports image_url content blocks via chat completions.
+ */
+const VISION_MODEL = "grok-2-vision-1212";
+
+/**
  * Optional filters forwarded to the x_search tool.
  * All fields are optional — omit any that are not needed.
  */
@@ -126,6 +132,59 @@ export class GrokClient {
       throw new Error(
         `Grok response JSON is malformed (likely truncated). Last 200 chars: ...${truncated}`
       );
+    }
+  }
+
+  /**
+   * Analyse un média (image, vidéo, GIF) via le modèle vision de Grok.
+   *
+   * Pour les images et GIFs, l'URL est passée directement en image_url.
+   * Pour les vidéos, on utilise thumbnail_url si disponible ; sinon l'URL directe.
+   *
+   * @param mediaUrl    URL publique du média à analyser.
+   * @param mediaType   Type de média : "image" | "video" | "gif".
+   * @param tweetText   Texte du tweet (contexte fourni au modèle pour un meilleur résumé).
+   * @returns           Résumé textuel du contenu du média, ou chaîne vide si l'analyse échoue.
+   */
+  async analyzeMedia(
+    mediaUrl: string,
+    mediaType: "image" | "video" | "gif",
+    tweetText?: string
+  ): Promise<string> {
+    if (!mediaUrl) return "";
+
+    const contextLine = tweetText
+      ? `Ce média provient d'un tweet dont le texte est : "${tweetText}". `
+      : "";
+
+    const prompt =
+      mediaType === "video"
+        ? `${contextLine}Décris en détail ce que montre cette vignette de vidéo (sujet, contexte, éléments visuels importants). Réponds en français.`
+        : `${contextLine}Décris en détail le contenu de cette image (sujet, texte visible, contexte, éléments importants). Réponds en français.`;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: VISION_MODEL,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: mediaUrl } },
+            ],
+          },
+        ],
+        max_tokens: 512,
+      });
+
+      return response.choices[0]?.message?.content?.trim() ?? "";
+    } catch (err) {
+      // L'analyse est optionnelle — ne pas bloquer le résultat du tweet.
+      console.error(
+        `[mcp-x-query] analyzeMedia failed for ${mediaUrl}:`,
+        err instanceof Error ? err.message : String(err)
+      );
+      return "";
     }
   }
 }

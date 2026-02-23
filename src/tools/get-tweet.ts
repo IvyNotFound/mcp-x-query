@@ -58,5 +58,26 @@ The tweet URL should be https://x.com/<username>/status/${tweetId}.`;
     throw new Error(`Tweet not found: ID "${tweetId}" does not exist, has been deleted, or is not accessible.`);
   }
 
+  // Enrich each media item with a Grok-vision summary when media is present.
+  if (result.media && result.media.length > 0) {
+    result.media = await Promise.all(
+      result.media.map(async (item) => {
+        // For videos use the thumbnail (static frame); for images/GIFs use the direct URL.
+        const urlToAnalyze =
+          item.type === "video" ? (item.thumbnail_url ?? item.url) : item.url;
+
+        if (!urlToAnalyze) return item;
+
+        const summary = await client.analyzeMedia(
+          urlToAnalyze,
+          item.type,
+          result.text
+        );
+
+        return summary ? { ...item, media_summary: summary } : item;
+      })
+    );
+  }
+
   return result;
 }
