@@ -40,3 +40,19 @@ export class GrokRateLimitError extends GrokError {
     this.name = "GrokRateLimitError";
   }
 }
+
+/**
+ * Thrown when the circuit breaker is open — too many consecutive transient
+ * failures have been recorded and the circuit is preventing further API calls
+ * to avoid hammering an unresponsive service.
+ *
+ * The `retryInMs` field indicates how long to wait before the circuit
+ * enters half-open state and allows a probe request through.
+ */
+export class GrokCircuitOpenError extends GrokError {
+  constructor(public readonly retryInMs: number) {
+    const retrySec = Math.ceil(retryInMs / 1000);
+    super(`Grok API circuit open — too many consecutive errors. Retry in ${retrySec}s.`);
+    this.name = "GrokCircuitOpenError";
+  }
+}
