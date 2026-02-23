@@ -1,5 +1,10 @@
 # mcp-x-query
 
+[![CI](https://github.com/IvyNotFound/mcp-x-query/actions/workflows/ci.yml/badge.svg)](https://github.com/IvyNotFound/mcp-x-query/actions/workflows/ci.yml)
+[![Release](https://github.com/IvyNotFound/mcp-x-query/actions/workflows/release.yml/badge.svg)](https://github.com/IvyNotFound/mcp-x-query/actions/workflows/release.yml)
+[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that gives AI assistants real-time access to Twitter/X data through the [Grok API](https://x.ai/api).
 
 Connect this server to Claude Desktop (or any MCP-compatible host) and ask questions like:
@@ -48,7 +53,7 @@ Connect this server to Claude Desktop (or any MCP-compatible host) and ask quest
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/mcp-x-query.git
+git clone https://github.com/IvyNotFound/mcp-x-query.git
 cd mcp-x-query
 npm install
 npm run build
