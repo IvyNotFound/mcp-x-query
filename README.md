@@ -24,6 +24,7 @@ Connect this server to Claude Desktop (or any MCP-compatible host) and ask quest
 - [Development](#development)
 - [Testing](#testing)
 - [Architecture](#architecture)
+- [Security](#security)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -44,6 +45,7 @@ Connect this server to Claude Desktop (or any MCP-compatible host) and ask quest
 | `analyze_thread` | Full analysis of a thread: sentiment, key arguments, summary |
 | `extract_links` | Extract and summarize all external links shared by an account |
 | `get_user_mentions` | Tweets from other accounts mentioning a user, with optional date range |
+| `get_list_tweets` | Tweets from a Twitter/X list by ID or URL, with optional date range, pagination cursor, and media enrichment |
 
 ---
 
@@ -196,6 +198,19 @@ Returns tweets from other accounts that mention a given user. Useful for monitor
 | `from_date` | string | No | YYYY-MM-DD |
 | `to_date` | string | No | YYYY-MM-DD |
 
+### `get_list_tweets`
+
+Fetches recent tweets from a Twitter/X list. Accepts a numeric list ID or a full list URL (`https://x.com/i/lists/<ID>`). Supports pagination via cursor: the `next_cursor` field in the response is the ID of the oldest tweet on the page — pass it as `cursor` in the next call to fetch older tweets. Pass `enrich_media: true` to have each media item analyzed by Grok Vision (increases latency).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `list_id` | string | Yes | Numeric list ID (e.g. `"1234567890"`) or full URL (`https://x.com/i/lists/1234567890`) |
+| `max_results` | number | No | 1–100, default 10 |
+| `from_date` | string | No | YYYY-MM-DD |
+| `to_date` | string | No | YYYY-MM-DD |
+| `cursor` | string | No | Pagination cursor: `next_cursor` value from the previous response |
+| `enrich_media` | boolean | No | `true` = add `media_summary` via Grok Vision (slower) |
+
 ---
 
 ## Claude Desktop Setup
@@ -242,7 +257,7 @@ The TypeScript source lives in `src/`. Compiled output goes to `dist/` (gitignor
 
 ```
 src/
-├── index.ts              # MCP server entry point — tool registration & startup (11 tools)
+├── index.ts              # MCP server entry point — tool registration & startup (12 tools)
 ├── lib/
 │   ├── grok-client.ts    # Grok API wrapper (OpenAI SDK + x_search tool, maxRetries: 3)
 │   ├── errors.ts         # Typed error hierarchy: GrokError, GrokAuthError, GrokRateLimitError
@@ -266,7 +281,8 @@ src/
     ├── analyze-sentiment.ts
     ├── analyze-thread.ts
     ├── extract-links.ts
-    └── get-user-mentions.ts
+    ├── get-user-mentions.ts
+    └── get-list-tweets.ts
 ```
 
 ---
@@ -274,26 +290,30 @@ src/
 ## Testing
 
 ```bash
-# Run all tests (unit tests only, no API key required)
+# Unit tests only — no API key required, runs in < 5 s
 npm test
 
-# Run with coverage report (thresholds: lines 60%, functions 60%, branches 50%)
+# Unit tests with coverage report (thresholds: lines 60%, functions 60%, branches 50%)
 npm run test:coverage
 
-# Run integration tests (requires XAI_API_KEY in .env.test)
+# Integration tests — makes real Grok API calls (requires XAI_API_KEY in .env.test)
 cp .env.test.example .env.test
-# Edit .env.test and add your key, then:
-npm test
+# Edit .env.test and set XAI_API_KEY=xai-..., then:
+npm run test:integration
+
+# All tests (unit + integration)
+npm run test:all
 ```
 
 **Test types:**
 
-| File | Type | Requires API key |
-|------|------|-----------------|
-| `src/tests/utils.test.ts` | Unit — 17 tests | No |
-| `src/tests/cache.test.ts` | Unit — 7 tests | No |
-| `src/tests/tools.test.ts` | Unit (mocked) — 78 tests | No |
-| `src/tests/mcp.test.ts` | Integration — 8 tests (auto-skipped without key) | Yes |
+| File | Type | Tests | Requires API key |
+|------|------|-------|-----------------|
+| `src/tests/utils.test.ts` | Unit | 25 | No |
+| `src/tests/cache.test.ts` | Unit | 7 | No |
+| `src/tests/schemas.test.ts` | Unit — MCP schema snapshots | 12 | No |
+| `src/tests/tools.test.ts` | Unit (mocked Grok client) | 89 | No |
+| `src/tests/mcp.test.ts` | Integration — real Grok API calls | 8 | Yes |
 
 ---
 
@@ -303,7 +323,7 @@ npm test
 MCP Host (e.g. Claude Desktop)
         │  stdio (JSON-RPC)
         ▼
-  src/index.ts  ←── registers 11 tools, wraps errors via run()
+  src/index.ts  ←── registers 12 tools, wraps errors via run()
         │
         ▼
   GrokClient.query()                GrokClient.analyzeMedia()
