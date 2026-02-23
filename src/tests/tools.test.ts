@@ -16,9 +16,31 @@ const MOCK_TWEET = {
   is_retweet: false,
 };
 
-function mockClient(response: unknown): GrokClient {
+const MOCK_TWEET_WITH_IMAGE = {
+  ...MOCK_TWEET,
+  media: [{ type: "image" as const, url: "https://pbs.twimg.com/media/test.jpg" }],
+};
+
+const MOCK_TWEET_WITH_VIDEO = {
+  ...MOCK_TWEET,
+  media: [{
+    type: "video" as const,
+    url: "https://video.twimg.com/vid.mp4",
+    thumbnail_url: "https://pbs.twimg.com/thumb.jpg",
+  }],
+};
+
+const MOCK_TWEET_WITH_VIDEO_NO_THUMB = {
+  ...MOCK_TWEET,
+  media: [{ type: "video" as const, url: "https://video.twimg.com/vid.mp4" }],
+};
+
+function mockClient(response: unknown, mediaAnalysis = ""): GrokClient {
+  // structuredClone prevents test-to-test mutation: getTweet reassigns result.media
+  // on the returned object, which would corrupt shared fixture references otherwise.
   return {
-    query: vi.fn().mockResolvedValue(response),
+    query: vi.fn().mockResolvedValue(structuredClone(response)),
+    analyzeMedia: vi.fn().mockResolvedValue(mediaAnalysis),
   } as unknown as GrokClient;
 }
 
@@ -51,6 +73,68 @@ describe("getTweet", () => {
       tweet_id_or_url: "https://x.com/testuser/status/1234567890",
     });
     expect(result.id).toBe("1234567890");
+  });
+
+  it("does not call analyzeMedia when tweet has no media", async () => {
+    const client = mockClient(MOCK_TWEET);
+    await getTweet(client, { tweet_id_or_url: "1234567890" });
+    expect(client.analyzeMedia).not.toHaveBeenCalled();
+  });
+});
+
+// ─── getTweet — media enrichment ──────────────────────────────────────────────
+describe("getTweet — media enrichment", () => {
+  it("enriches image media with analyzeMedia summary", async () => {
+    const client = mockClient(MOCK_TWEET_WITH_IMAGE, "Une photo de coucher de soleil");
+    const result = await getTweet(client, { tweet_id_or_url: "1234567890" });
+    expect(result.media![0].media_summary).toBe("Une photo de coucher de soleil");
+    expect(client.analyzeMedia).toHaveBeenCalledWith(
+      "https://pbs.twimg.com/media/test.jpg",
+      "image",
+      MOCK_TWEET.text
+    );
+  });
+
+  it("uses thumbnail_url for video analysis", async () => {
+    const client = mockClient(MOCK_TWEET_WITH_VIDEO, "Une vignette de vidéo");
+    await getTweet(client, { tweet_id_or_url: "1234567890" });
+    expect(client.analyzeMedia).toHaveBeenCalledWith(
+      "https://pbs.twimg.com/thumb.jpg",
+      "video",
+      MOCK_TWEET.text
+    );
+  });
+
+  it("falls back to video url when thumbnail_url is absent", async () => {
+    const client = mockClient(MOCK_TWEET_WITH_VIDEO_NO_THUMB, "Contenu vidéo");
+    await getTweet(client, { tweet_id_or_url: "1234567890" });
+    expect(client.analyzeMedia).toHaveBeenCalledWith(
+      "https://video.twimg.com/vid.mp4",
+      "video",
+      MOCK_TWEET.text
+    );
+  });
+
+  it("omits media_summary when analyzeMedia returns empty string", async () => {
+    const client = mockClient(MOCK_TWEET_WITH_IMAGE, "");
+    const result = await getTweet(client, { tweet_id_or_url: "1234567890" });
+    expect(result.media![0].media_summary).toBeUndefined();
+  });
+
+  it("enriches multiple media items independently", async () => {
+    const tweetWithMultiMedia = {
+      ...MOCK_TWEET,
+      media: [
+        { type: "image" as const, url: "https://pbs.twimg.com/media/a.jpg" },
+        { type: "image" as const, url: "https://pbs.twimg.com/media/b.jpg" },
+      ],
+    };
+    const client = mockClient(tweetWithMultiMedia, "Description");
+    const result = await getTweet(client, { tweet_id_or_url: "1234567890" });
+    expect(client.analyzeMedia).toHaveBeenCalledTimes(2);
+    expect(result.media).toHaveLength(2);
+    expect(result.media![0].media_summary).toBe("Description");
+    expect(result.media![1].media_summary).toBe("Description");
   });
 });
 
