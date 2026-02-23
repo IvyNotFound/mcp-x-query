@@ -902,3 +902,87 @@ describe("getListTweets", () => {
     expect(result.next_cursor).toBeUndefined();
   });
 });
+
+// ─── searchTweets — cursor pagination (T14) ───────────────────────────────────
+describe("searchTweets — cursor pagination", () => {
+  it("includes cursor instruction in prompt when cursor is provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await searchTweets(client, { query: "test", cursor: "999888777" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("999888777");
+  });
+
+  it("omits cursor instruction when cursor is not provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await searchTweets(client, { query: "test" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).not.toContain("pagination");
+  });
+
+  it("returns next_cursor equal to the smallest tweet ID", async () => {
+    const tweets = [
+      { ...MOCK_TWEET, id: "5000000000" },
+      { ...MOCK_TWEET, id: "3000000000" },
+      { ...MOCK_TWEET, id: "4000000000" },
+    ];
+    const client = mockClient({ tweets });
+    const result = await searchTweets(client, { query: "test" });
+    expect(result.next_cursor).toBe("3000000000");
+  });
+});
+
+// ─── getUserTweets — cursor pagination (T14) ──────────────────────────────────
+describe("getUserTweets — cursor pagination", () => {
+  it("includes cursor instruction in prompt when cursor is provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserTweets(client, { username: "elonmusk", cursor: "999888777" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("999888777");
+  });
+
+  it("omits cursor instruction when cursor is not provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserTweets(client, { username: "elonmusk" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).not.toContain("pagination");
+  });
+
+  it("returns next_cursor equal to the smallest tweet ID", async () => {
+    const tweets = [
+      { ...MOCK_TWEET, id: "5000000000" },
+      { ...MOCK_TWEET, id: "3000000000" },
+      { ...MOCK_TWEET, id: "4000000000" },
+    ];
+    const client = mockClient({ tweets });
+    const result = await getUserTweets(client, { username: "elonmusk" });
+    expect(result.next_cursor).toBe("3000000000");
+  });
+});
+
+// ─── getUserMentions — cursor pagination (T14) ────────────────────────────────
+describe("getUserMentions — cursor pagination", () => {
+  it("includes cursor instruction in prompt when cursor is provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, { username: "elonmusk", cursor: "999888777" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("999888777");
+  });
+
+  it("omits cursor instruction when cursor is not provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getUserMentions(client, { username: "elonmusk" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).not.toContain("pagination");
+  });
+
+  it("returns next_cursor equal to the smallest tweet ID", async () => {
+    const tweets = [
+      { ...MOCK_TWEET, id: "5000000000" },
+      { ...MOCK_TWEET, id: "3000000000" },
+      { ...MOCK_TWEET, id: "4000000000" },
+    ];
+    const client = mockClient({ tweets });
+    const result = await getUserMentions(client, { username: "elonmusk" });
+    expect(result.next_cursor).toBe("3000000000");
+  });
+});
