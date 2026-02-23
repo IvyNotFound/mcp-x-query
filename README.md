@@ -33,7 +33,7 @@ Connect this server to Claude Desktop (or any MCP-compatible host) and ask quest
 
 | Tool | Description |
 |------|-------------|
-| `get_tweet` | Retrieve a single tweet by ID or URL |
+| `get_tweet` | Retrieve a single tweet by ID or URL — images/videos auto-analyzed by Grok Vision |
 | `get_tweet_replies` | Get replies to a tweet, sorted by engagement |
 | `get_user_tweets` | Recent tweets from a user, with optional date range |
 | `get_user_profile` | Full profile: bio, followers, pinned tweet, etc. |
@@ -79,6 +79,8 @@ The server reads `XAI_API_KEY` from the environment at startup and exits immedia
 ### `get_tweet`
 
 Retrieves a single tweet with full metadata (media, quoted tweet, engagement metrics).
+
+When the tweet contains images, videos, or GIFs, each media item is automatically analyzed by **Grok Vision** (`grok-2-vision-1212`) and enriched with a `media_summary` field describing the visual content.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -241,13 +243,11 @@ MCP Host (e.g. Claude Desktop)
   src/index.ts  ←── registers 7 tools, wraps errors via run()
         │
         ▼
-  GrokClient.query()
-        │  HTTPS
-        ▼
-  api.x.ai/v1  (OpenAI-compatible endpoint)
-        │  x_search tool
-        ▼
-  Twitter/X real-time data
+  GrokClient.query()                GrokClient.analyzeMedia()
+        │  HTTPS                            │  HTTPS (get_tweet only)
+        ▼                                   ▼
+  api.x.ai/v1  ── x_search ──▶  Twitter/X real-time data
+  api.x.ai/v1  ── chat/completions (grok-2-vision-1212) ──▶  media_summary
 ```
 
 **Key design decisions:**
@@ -256,6 +256,7 @@ MCP Host (e.g. Claude Desktop)
 - **Lean vs. verbose thread mode**: Threads default to a minimal schema to stay within token limits. Pass `verbose: true` when you need full metadata.
 - **Input normalisation**: `extractTweetId` handles both raw IDs and full URLs. `sanitizeUsername` strips leading `@`. All tools accept user-friendly input.
 - **Centralized error handling**: The `run()` helper in `index.ts` ensures every tool always returns a valid MCP response shape, even on failure.
+- **Media enrichment**: `get_tweet` performs a second API call via `GrokClient.analyzeMedia()` after fetching. For videos the thumbnail frame is used; for images/GIFs the direct URL. The call is fire-and-forget safe — failures are logged and silently skipped so the tweet is always returned.
 
 ---
 
