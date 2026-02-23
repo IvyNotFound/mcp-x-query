@@ -19,11 +19,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
           registry-url: https://registry.npmjs.org
 
       - run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Type check
         run: npx tsc --noEmit
@@ -31,9 +34,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
         # XAI_API_KEY absent → integration tests skipped
+        # Coverage thresholds enforced before publishing
 
       # ── Create GitHub Release ──────────────────────────────────────────────
       - name: Create GitHub Release
