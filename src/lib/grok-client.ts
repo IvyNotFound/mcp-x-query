@@ -18,6 +18,8 @@ import OpenAI from "openai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ZodType } from "zod";
 import { GrokAuthError, GrokRateLimitError } from "./errors.js";
+import { CircuitBreaker } from "./circuit-breaker.js";
+import { log } from "./logger.js";
 
 /** Model identifier for the Grok variant used by this server. */
 const MODEL = "grok-4-1-fast-non-reasoning";
@@ -59,6 +61,7 @@ export interface XSearchParams {
 
 export class GrokClient {
   private openai: OpenAI;
+  private readonly circuitBreaker = new CircuitBreaker();
 
   /**
    * @param apiKey  Your xAI API key (starts with "xai-").
@@ -143,6 +146,10 @@ export class GrokClient {
       Object.assign(tool, xSearchParams);
     }
 
+    // Reject immediately if the circuit is open (too many recent 5xx failures).
+    // Throws GrokCircuitOpenError without touching the API.
+    this.circuitBreaker.check();
+
     let response: Awaited<ReturnType<typeof this.openai.responses.create>>;
     try {
       response = await this.openai.responses.create({
@@ -161,8 +168,19 @@ export class GrokClient {
         },
       });
     } catch (err) {
+      // Only count transient (5xx / network) failures against the circuit.
+      // Auth (401/403) and rate-limit (429) errors are non-transient client
+      // errors — tripping the circuit for them would mask the real cause.
+      const isNonTransient =
+        err instanceof OpenAI.AuthenticationError ||
+        err instanceof OpenAI.PermissionDeniedError ||
+        err instanceof OpenAI.RateLimitError;
+      if (!isNonTransient) {
+        this.circuitBreaker.onFailure();
+      }
       this.rethrowApiError(err);
     }
+    this.circuitBreaker.onSuccess();
 
     const text = response.output_text;
     if (!text) {
@@ -207,15 +225,11 @@ export class GrokClient {
     try {
       const { hostname } = new URL(mediaUrl);
       if (!ALLOWED_MEDIA_DOMAINS.has(hostname)) {
-        console.error(
-          `[mcp-x-query] analyzeMedia blocked: domain "${hostname}" is not an allowed Twitter/X CDN domain.`
-        );
+        log("warn", "analyzeMedia blocked: domain not in allowlist", { domain: hostname });
         return "";
       }
     } catch {
-      console.error(
-        `[mcp-x-query] analyzeMedia blocked: invalid URL "${mediaUrl}".`
-      );
+      log("warn", "analyzeMedia blocked: invalid URL", { url: mediaUrl });
       return "";
     }
 
@@ -257,10 +271,10 @@ export class GrokClient {
         throw new GrokAuthError();
       }
       // All other failures are non-fatal: media analysis is optional.
-      console.error(
-        `[mcp-x-query] analyzeMedia failed for ${mediaUrl}:`,
-        err instanceof Error ? err.message : String(err)
-      );
+      log("warn", "analyzeMedia failed", {
+        url: mediaUrl,
+        detail: err instanceof Error ? err.message : String(err),
+      });
       return "";
     }
   }

@@ -20,7 +20,7 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { TweetArraySchema } from "../schemas/tweet.js";
-import { sanitizeUsername } from "../lib/utils.js";
+import { sanitizeUsername, computeNextCursor } from "../lib/utils.js";
 
 /** MCP input schema for the get_user_mentions tool. */
 export const GetUserMentionsInput = z.object({
@@ -49,6 +49,13 @@ export const GetUserMentionsInput = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("End date in YYYY-MM-DD format"),
+  cursor: z
+    .string()
+    .regex(/^\d+$/, "Cursor must be a numeric tweet ID")
+    .optional()
+    .describe(
+      "Pagination cursor: tweet ID returned as next_cursor in the previous response. Pass it to fetch the next (older) page."
+    ),
 });
 
 /**
@@ -70,7 +77,11 @@ export async function getUserMentions(
       ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
       : "";
 
-  const prompt = `Find up to ${maxResults} recent tweets mentioning @${username} on Twitter/X${dateRange}.
+  const cursorInstruction = input.cursor
+    ? ` Only return tweets with a numeric ID strictly less than ${input.cursor} (pagination: older tweets only).`
+    : "";
+
+  const prompt = `Find up to ${maxResults} recent tweets mentioning @${username} on Twitter/X${dateRange}.${cursorInstruction}
 Return as a JSON object with a "tweets" array.
 For each tweet include: id, url, author (username, display_name, verified), text, created_at,
 metrics (likes, retweets, replies, views if available), media if any, is_retweet, language.
@@ -78,8 +89,10 @@ Only return tweets from other accounts that mention @${username} — exclude twe
 Sort by most recent first.`;
 
   // Mentions come from any account — no allowed_x_handles filter.
-  return client.query(prompt, TweetArraySchema, "tweet_array", {
+  const result = await client.query(prompt, TweetArraySchema, "tweet_array", {
     from_date: input.from_date,
     to_date: input.to_date,
   });
+
+  return { ...result, next_cursor: computeNextCursor(result.tweets) };
 }

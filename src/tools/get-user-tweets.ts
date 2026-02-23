@@ -19,7 +19,7 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { TweetArraySchema } from "../schemas/tweet.js";
-import { sanitizeUsername } from "../lib/utils.js";
+import { sanitizeUsername, computeNextCursor } from "../lib/utils.js";
 
 /** MCP input schema for the get_user_tweets tool. */
 export const GetUserTweetsInput = z.object({
@@ -48,6 +48,13 @@ export const GetUserTweetsInput = z.object({
     .describe(
       "When true, each tweet's media items are analysed with Grok Vision and a media_summary field is added. Increases latency."
     ),
+  cursor: z
+    .string()
+    .regex(/^\d+$/, "Cursor must be a numeric tweet ID")
+    .optional()
+    .describe(
+      "Pagination cursor: tweet ID returned as next_cursor in the previous response. Pass it to fetch the next (older) page."
+    ),
 });
 
 /**
@@ -70,7 +77,11 @@ export async function getUserTweets(
       ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
       : "";
 
-  const prompt = `Retrieve up to ${maxResults} recent tweets from @${username} on Twitter/X${dateRange}.
+  const cursorInstruction = input.cursor
+    ? ` Only return tweets with a numeric ID strictly less than ${input.cursor} (pagination: older tweets only).`
+    : "";
+
+  const prompt = `Retrieve up to ${maxResults} recent tweets from @${username} on Twitter/X${dateRange}.${cursorInstruction}
 Return as a JSON object with a "tweets" array.
 Include original tweets and retweets. For each tweet include: id, url, author (username: "${username}", display_name, verified),
 text, created_at, metrics (likes, retweets, replies, views if available), media if any, is_retweet.
@@ -102,5 +113,5 @@ Sort by most recent first.`;
     );
   }
 
-  return result;
+  return { ...result, next_cursor: computeNextCursor(result.tweets) };
 }
