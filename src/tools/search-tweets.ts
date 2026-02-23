@@ -21,6 +21,7 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { TweetArraySchema } from "../schemas/tweet.js";
+import { escapeForPrompt } from "../lib/utils.js";
 
 /** MCP input schema for the search_tweets tool. */
 export const SearchTweetsInput = z.object({
@@ -35,10 +36,12 @@ export const SearchTweetsInput = z.object({
     .describe("Maximum number of tweets to return (default: 10)"),
   from_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("Start date in YYYY-MM-DD format"),
   to_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("End date in YYYY-MM-DD format"),
 });
@@ -62,7 +65,8 @@ export async function searchTweets(
       ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
       : "";
 
-  const prompt = `Search Twitter/X for tweets matching: "${input.query}"${dateRange}.
+  const prompt = `Search Twitter/X for tweets matching the query below${dateRange}.
+<query>${escapeForPrompt(input.query)}</query>
 Return up to ${maxResults} relevant tweets as a JSON object with a "tweets" array.
 For each tweet include: id, url, author (username, display_name, verified), text, created_at,
 metrics (likes, retweets, replies, views if available), media if any, is_retweet, language.

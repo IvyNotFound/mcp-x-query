@@ -55,10 +55,14 @@ export class GrokClient {
   constructor(apiKey: string) {
     // Use the OpenAI client library with xAI's compatible endpoint.
     // maxRetries: 3 — the SDK retries 429 and 5xx automatically with backoff.
+    // timeout: 60 s  — Grok x_search calls can be slow (real-time Twitter search).
+    //   Without an explicit timeout the SDK default is 10 minutes, which is far
+    //   too long for an interactive MCP tool.
     this.openai = new OpenAI({
       apiKey,
       baseURL: "https://api.x.ai/v1",
       maxRetries: 3,
+      timeout: 60_000,
     });
   }
 
@@ -196,19 +200,23 @@ export class GrokClient {
         : `${contextLine}Describe in detail the content of this image (subject, visible text, context, important elements).`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: VISION_MODEL,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: mediaUrl } },
-            ],
-          },
-        ],
-        max_tokens: 512,
-      });
+      const response = await this.openai.chat.completions.create(
+        {
+          model: VISION_MODEL,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: mediaUrl } },
+              ],
+            },
+          ],
+          max_tokens: 512,
+        },
+        // Vision analysis is faster than x_search — 30 s is plenty.
+        { timeout: 30_000 }
+      );
 
       return response.choices[0]?.message?.content?.trim() ?? "";
     } catch (err) {

@@ -17,6 +17,13 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { TrendingTopicsSchema } from "../schemas/trending.js";
+import { TtlCache } from "../lib/cache.js";
+import { escapeForPrompt } from "../lib/utils.js";
+
+// Trending topics rarely change within a 5-minute window; caching avoids
+// redundant API calls when the same category is queried in quick succession.
+// Exported so test suites can call cache.clear() between tests.
+export const trendingCache = new TtlCache<string, z.infer<typeof TrendingTopicsSchema>>(5 * 60_000);
 
 /** MCP input schema for the get_trending tool. */
 export const GetTrendingInput = z.object({
@@ -39,9 +46,14 @@ export async function getTrending(
   client: GrokClient,
   input: z.infer<typeof GetTrendingInput>
 ) {
+  // Use the sanitized category as the cache key ("" when no filter).
+  const cacheKey = input.category ? input.category.toLowerCase().trim() : "";
+  const cached = trendingCache.get(cacheKey);
+  if (cached) return cached;
+
   // Build an optional category clause for the prompt.
   const categoryFilter = input.category
-    ? ` in the "${input.category}" category`
+    ? ` in the <category>${escapeForPrompt(input.category)}</category> category`
     : "";
 
   const prompt = `What are the current trending topics on Twitter/X${categoryFilter} right now?
@@ -52,5 +64,7 @@ and a brief description of why it's trending.
 Return at least 10 trending topics if available.`;
 
   // No x_search handle filter — trending is platform-wide.
-  return client.query(prompt, TrendingTopicsSchema, "trending_topics");
+  const result = await client.query(prompt, TrendingTopicsSchema, "trending_topics");
+  trendingCache.set(cacheKey, result);
+  return result;
 }

@@ -27,6 +27,7 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { SentimentAnalysisSchema } from "../schemas/sentiment.js";
+import { escapeForPrompt } from "../lib/utils.js";
 
 /** MCP input schema for the analyze_sentiment tool. */
 export const AnalyzeSentimentInput = z.object({
@@ -43,10 +44,12 @@ export const AnalyzeSentimentInput = z.object({
     .describe("Number of tweets to analyze (default: 30)"),
   from_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("Start date in YYYY-MM-DD format"),
   to_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("End date in YYYY-MM-DD format"),
   language: z
@@ -67,13 +70,19 @@ export async function analyzeSentiment(
   input: z.infer<typeof AnalyzeSentimentInput>
 ) {
   const maxTweets = input.max_tweets ?? 30;
-  const langFilter = input.language ? ` lang:${input.language}` : "";
+  // Language filter is passed as an explicit search constraint separate from
+  // the query narrative — embedding `lang:xx` inside the quoted query string
+  // is ambiguous and may be ignored by Grok's prompt parser.
+  const langInstruction = input.language
+    ? `\nIMPORTANT: Restrict results to tweets written in language "${escapeForPrompt(input.language)}" — apply the lang:${escapeForPrompt(input.language)} Twitter search operator to your x_search query.`
+    : "";
   const dateRange =
     input.from_date || input.to_date
       ? ` between ${input.from_date ?? "the beginning"} and ${input.to_date ?? "now"}`
       : "";
 
-  const prompt = `Search Twitter/X for ${maxTweets} recent tweets about: "${input.query}"${langFilter}${dateRange}.
+  const prompt = `Search Twitter/X for ${maxTweets} recent tweets about the topic below${dateRange}.${langInstruction}
+<query>${escapeForPrompt(input.query)}</query>
 
 Analyze the sentiment of this corpus and return a structured JSON object with exactly these fields:
 - query: the topic you analyzed (string)

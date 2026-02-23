@@ -34,10 +34,12 @@ export const GetUserTweetsInput = z.object({
     .describe("Maximum number of tweets to return (default: 10)"),
   from_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("Start date in YYYY-MM-DD format"),
   to_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("End date in YYYY-MM-DD format"),
 });

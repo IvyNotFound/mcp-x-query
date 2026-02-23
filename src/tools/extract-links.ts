@@ -41,10 +41,12 @@ export const ExtractLinksInput = z.object({
     .describe("Number of recent tweets to scan for links (default: 50, max: 100)"),
   from_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("Start date in YYYY-MM-DD format"),
   to_date: z
     .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
     .optional()
     .describe("End date in YYYY-MM-DD format"),
 });
