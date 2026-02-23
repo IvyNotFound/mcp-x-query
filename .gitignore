@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+*.env
+.env.test
+.DS_Store
+
+# Claude Code local settings (may contain API keys and personal config)
+.claude/settings.local.json
+
+# Multi-agent coordination files (local context, not for version control)
+CLAUDE.md
+.claude/agents/

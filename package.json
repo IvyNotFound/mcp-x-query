@@ -1,0 +1,29 @@
+{
+  "name": "mcp-x-query",
+  "version": "1.0.0",
+  "description": "MCP server to query Twitter/X via Grok API x_search",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "openai": "^4.104.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "dotenv": "^17.3.1",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
