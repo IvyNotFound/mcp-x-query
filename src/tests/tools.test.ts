@@ -11,6 +11,7 @@ import { analyzeSentiment } from "../tools/analyze-sentiment.js";
 import { analyzeThread } from "../tools/analyze-thread.js";
 import { extractLinks } from "../tools/extract-links.js";
 import { getUserMentions } from "../tools/get-user-mentions.js";
+import { getListTweets } from "../tools/get-list-tweets.js";
 
 // Minimal tweet fixture
 const MOCK_TWEET = {
@@ -724,6 +725,75 @@ describe("searchTweets — enrich_media", () => {
   });
 });
 
+// ─── searchTweets — date range prompt (T8) ────────────────────────────────────
+describe("searchTweets — date range prompt", () => {
+  it("includes from_date and 'now' in prompt when only from_date is provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await searchTweets(client, { query: "test", from_date: "2025-01-01" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("2025-01-01");
+    expect(prompt).toContain("now");
+  });
+
+  it("includes 'the beginning' and to_date in prompt when only to_date is provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await searchTweets(client, { query: "test", to_date: "2025-12-31" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("the beginning");
+    expect(prompt).toContain("2025-12-31");
+  });
+});
+
+// ─── searchTweets — enrich_media edge cases (T8) ──────────────────────────────
+describe("searchTweets — enrich_media edge cases", () => {
+  it("skips analyzeMedia for tweets with empty media array", async () => {
+    const tweetWithEmptyMedia = { ...MOCK_TWEET, id: "1234567890", media: [] };
+    const client = mockClient({ tweets: [tweetWithEmptyMedia] });
+    await searchTweets(client, { query: "test", enrich_media: true });
+    expect(client.analyzeMedia).not.toHaveBeenCalled();
+  });
+
+  it("uses thumbnail_url for video analysis in searchTweets", async () => {
+    const tweetWithVideo = { ...MOCK_TWEET_WITH_VIDEO, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithVideo] }, "Video thumbnail summary");
+    await searchTweets(client, { query: "test", enrich_media: true });
+    expect(client.analyzeMedia).toHaveBeenCalledWith(
+      "https://pbs.twimg.com/thumb.jpg",
+      "video",
+      MOCK_TWEET.text
+    );
+  });
+
+  it("falls back to url when video has no thumbnail_url in searchTweets", async () => {
+    const tweetWithVideoNoThumb = { ...MOCK_TWEET_WITH_VIDEO_NO_THUMB, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithVideoNoThumb] }, "Video url summary");
+    await searchTweets(client, { query: "test", enrich_media: true });
+    expect(client.analyzeMedia).toHaveBeenCalledWith(
+      "https://video.twimg.com/vid.mp4",
+      "video",
+      MOCK_TWEET.text
+    );
+  });
+
+  it("skips analyzeMedia when urlToAnalyze is an empty string", async () => {
+    const tweetWithNoUrl = {
+      ...MOCK_TWEET,
+      id: "1234567890",
+      media: [{ type: "video" as const, url: "", thumbnail_url: null }],
+    };
+    const client = mockClient({ tweets: [tweetWithNoUrl] });
+    await searchTweets(client, { query: "test", enrich_media: true });
+    expect(client.analyzeMedia).not.toHaveBeenCalled();
+  });
+
+  it("omits media_summary when analyzeMedia returns empty string", async () => {
+    const tweetWithImage = { ...MOCK_TWEET_WITH_IMAGE, id: "1234567890" };
+    const client = mockClient({ tweets: [tweetWithImage] }, "");
+    const result = await searchTweets(client, { query: "test", enrich_media: true });
+    expect(result.tweets[0].media![0].media_summary).toBeUndefined();
+  });
+});
+
 // ─── getUserMentions (T1) ─────────────────────────────────────────────────────
 describe("getUserMentions", () => {
   it("returns tweets array", async () => {
@@ -771,5 +841,64 @@ describe("getUserMentions", () => {
     await getUserMentions(client, { username: "elonmusk" });
     const schemaName = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][2];
     expect(schemaName).toBe("tweet_array");
+  });
+});
+
+// ─── getListTweets ────────────────────────────────────────────────────────────
+describe("getListTweets", () => {
+  it("returns tweets array from a numeric list ID", async () => {
+    const client = mockClient({ tweets: [MOCK_TWEET] });
+    const result = await getListTweets(client, { list_id: "123456789" });
+    expect(result.tweets).toHaveLength(1);
+  });
+
+  it("extracts list ID from an x.com URL and uses it in prompt", async () => {
+    const client = mockClient({ tweets: [MOCK_TWEET] });
+    await getListTweets(client, { list_id: "https://x.com/i/lists/987654321" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("987654321");
+  });
+
+  it("includes date range in prompt when both dates are provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getListTweets(client, {
+      list_id: "123456789",
+      from_date: "2025-01-01",
+      to_date: "2025-06-30",
+    });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("2025-01-01");
+    expect(prompt).toContain("2025-06-30");
+  });
+
+  it("includes cursor instruction in prompt when cursor is provided", async () => {
+    const client = mockClient({ tweets: [] });
+    await getListTweets(client, { list_id: "123456789", cursor: "111222333" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("111222333");
+  });
+
+  it("omits pagination instruction when cursor is not provided", async () => {
+    const client = mockClient({ tweets: [MOCK_TWEET] });
+    await getListTweets(client, { list_id: "123456789" });
+    const prompt = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).not.toContain("pagination");
+  });
+
+  it("returns next_cursor as the smallest (oldest) tweet ID", async () => {
+    const tweets = [
+      { ...MOCK_TWEET, id: "9000000000" },
+      { ...MOCK_TWEET, id: "7000000000" },
+      { ...MOCK_TWEET, id: "8000000000" },
+    ];
+    const client = mockClient({ tweets });
+    const result = await getListTweets(client, { list_id: "123456789" });
+    expect(result.next_cursor).toBe("7000000000");
+  });
+
+  it("returns next_cursor undefined when tweets array is empty", async () => {
+    const client = mockClient({ tweets: [] });
+    const result = await getListTweets(client, { list_id: "123456789" });
+    expect(result.next_cursor).toBeUndefined();
   });
 });

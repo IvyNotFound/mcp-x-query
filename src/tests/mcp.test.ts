@@ -95,7 +95,7 @@ describe.skipIf(!HAS_API_KEY)(
     });
 
     // ── Tool discovery ────────────────────────────────────────────────────────
-    it("exposes exactly 11 tools", async () => {
+    it("exposes exactly 12 tools", async () => {
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name);
       expect(names).toEqual(
@@ -111,9 +111,10 @@ describe.skipIf(!HAS_API_KEY)(
           "analyze_thread",
           "extract_links",
           "get_user_mentions",
+          "get_list_tweets",
         ])
       );
-      expect(tools).toHaveLength(11);
+      expect(tools).toHaveLength(12);
     });
 
     // ── Error cases ───────────────────────────────────────────────────────────
@@ -228,6 +229,23 @@ describe.skipIf(!HAS_API_KEY)(
       const result = await client.callTool({
         name: "search_tweets",
         arguments: { query: "AI", max_results: 3 },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const data = parseResult<{ tweets: unknown[] }>(result);
+      expect(Array.isArray(data.tweets)).toBe(true);
+    });
+
+    // ── get_user_mentions — stable date range (T9) ────────────────────────────
+    it("get_user_mentions returns tweets mentioning @elonmusk from Oct 2022", async () => {
+      const result = await client.callTool({
+        name: "get_user_mentions",
+        arguments: {
+          username: "elonmusk",
+          max_results: 3,
+          from_date: "2022-10-25",
+          to_date: "2022-10-30",
+        },
       });
 
       expect(result.isError).toBeFalsy();
