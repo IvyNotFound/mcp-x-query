@@ -15,5 +15,15 @@ export default defineConfig({
       // Propagate to worker threads
       XAI_API_KEY: process.env.XAI_API_KEY ?? "",
     },
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts"],
+      exclude: ["src/tests/**"],
+      thresholds: {
+        lines: 60,
+        functions: 60,
+        branches: 50,
+      },
+    },
   },
 });
