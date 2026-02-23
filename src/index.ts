@@ -4,7 +4,7 @@
  * This is the root of the MCP server. It:
  *  1. Validates the XAI_API_KEY environment variable (hard-fails without it).
  *  2. Creates a shared GrokClient that wraps the Grok API.
- *  3. Registers all seven MCP tools with their input schemas and descriptions.
+ *  3. Registers all ten MCP tools with their input schemas and descriptions.
  *  4. Starts a stdio-based transport so that MCP hosts (e.g. Claude Desktop)
  *     can communicate with this server via standard input/output.
  *
@@ -21,6 +21,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { GrokClient } from "./lib/grok-client.js";
+import { GrokAuthError, GrokRateLimitError } from "./lib/errors.js";
 import { GetTweetInput, getTweet } from "./tools/get-tweet.js";
 import {
   GetTweetRepliesInput,
@@ -34,6 +35,9 @@ import {
 import { SearchTweetsInput, searchTweets } from "./tools/search-tweets.js";
 import { GetThreadInput, getThread } from "./tools/get-thread.js";
 import { GetTrendingInput, getTrending } from "./tools/get-trending.js";
+import { AnalyzeSentimentInput, analyzeSentiment } from "./tools/analyze-sentiment.js";
+import { AnalyzeThreadInput, analyzeThread } from "./tools/analyze-thread.js";
+import { ExtractLinksInput, extractLinks } from "./tools/extract-links.js";
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -73,7 +77,16 @@ async function run<T>(
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[mcp-x-query] Tool error:", message);
+
+    if (err instanceof GrokAuthError) {
+      // Fatal — wrong or expired key. Log prominently so the operator notices.
+      console.error("[mcp-x-query] Authentication error:", message);
+    } else if (err instanceof GrokRateLimitError) {
+      console.error("[mcp-x-query] Rate limit:", message);
+    } else {
+      console.error("[mcp-x-query] Tool error:", message);
+    }
+
     return {
       isError: true,
       content: [{ type: "text", text: `Error: ${message}` }],
@@ -137,6 +150,30 @@ server.tool(
   "Get currently trending topics on Twitter/X, with optional category filter",
   GetTrendingInput.shape,
   (input) => run(() => getTrending(grok, input))
+);
+
+// analyze_sentiment — fetch tweets for a query and analyze collective sentiment
+server.tool(
+  "analyze_sentiment",
+  "Analyze the sentiment of tweets about a topic or query: returns overall sentiment, score, breakdown, dominant topics/emotions, and representative tweets",
+  AnalyzeSentimentInput.shape,
+  (input) => run(() => analyzeSentiment(grok, input))
+);
+
+// analyze_thread — retrieve a thread and analyze its content, sentiment, and arguments
+server.tool(
+  "analyze_thread",
+  "Retrieve a full Twitter/X thread and analyze its sentiment, key arguments, topics, and tone",
+  AnalyzeThreadInput.shape,
+  (input) => run(() => analyzeThread(grok, input))
+);
+
+// extract_links — aggregate and summarize all external URLs shared by a user
+server.tool(
+  "extract_links",
+  "Extract and summarize all external links shared by a Twitter/X user, with optional date range",
+  ExtractLinksInput.shape,
+  (input) => run(() => extractLinks(grok, input))
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
