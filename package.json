@@ -11,9 +11,11 @@
     "inspector": "npx @modelcontextprotocol/inspector node dist/index.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "vitest run src/tests/cache.test.ts src/tests/circuit-breaker.test.ts src/tests/logger.test.ts src/tests/schemas.test.ts src/tests/tools.test.ts src/tests/utils.test.ts",
+    "test:watch": "vitest src/tests/cache.test.ts src/tests/circuit-breaker.test.ts src/tests/logger.test.ts src/tests/schemas.test.ts src/tests/tools.test.ts src/tests/utils.test.ts",
+    "test:coverage": "vitest run --coverage src/tests/cache.test.ts src/tests/circuit-breaker.test.ts src/tests/logger.test.ts src/tests/schemas.test.ts src/tests/tools.test.ts src/tests/utils.test.ts",
+    "test:integration": "vitest run src/tests/mcp.test.ts",
+    "test:all": "vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
