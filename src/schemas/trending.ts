@@ -11,9 +11,9 @@ import { z } from "zod";
 /** A single trending topic on Twitter/X. */
 export const TrendingTopicSchema = z.object({
   name: z.string(),                   // Hashtag or topic name (e.g. "#AI" or "World Cup")
-  tweet_count: z.number().optional(), // Approximate volume; may be absent if unknown
-  category: z.string().optional(),    // e.g. "technology", "sports", "politics"
-  description: z.string().optional(), // Brief explanation of why it's trending
+  tweet_count: z.number().nullish(),  // Approximate volume; Grok returns null when unknown
+  category: z.string().nullish(),     // e.g. "technology", "sports", "politics"
+  description: z.string().nullish(),  // Brief explanation of why it's trending
 });
 
 /** Wrapper returned by get_trending — always contains a "topics" array. */

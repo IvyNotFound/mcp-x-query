@@ -14,15 +14,16 @@ import { TweetSchema } from "./tweet.js";
 export const UserProfileSchema = z.object({
   username: z.string(),
   display_name: z.string(),
-  bio: z.string(),                        // Also called "description" in the Twitter API
-  location: z.string().optional(),
-  website: z.string().optional(),         // The profile's link field (may be a t.co URL)
-  verified: z.boolean(),                  // True for any verification badge (blue, gold, grey)
-  profile_image_url: z.string().optional(),
-  banner_url: z.string().optional(),      // Header/cover image URL
+  bio: z.string().nullish(),              // Grok returns null when bio is absent
+  location: z.string().nullish(),
+  website: z.string().nullish(),          // The profile's link field (may be a t.co URL)
+  // Grok sometimes returns "true"/"false" strings — coerce to boolean.
+  verified: z.coerce.boolean(),           // True for any verification badge (blue, gold, grey)
+  profile_image_url: z.string().nullish(),
+  banner_url: z.string().nullish(),       // Header/cover image URL
   followers_count: z.number(),
-  following_count: z.number(),
-  tweet_count: z.number(),
-  created_at: z.string().optional(),      // ISO 8601 account creation date
-  pinned_tweet: TweetSchema.optional(),   // The tweet currently pinned to the profile
+  following_count: z.number().nullish(),  // Grok returns null when unavailable
+  tweet_count: z.number().nullish(),      // Grok returns null when unavailable
+  created_at: z.string().nullish(),       // ISO 8601 account creation date
+  pinned_tweet: TweetSchema.nullish(),    // The tweet currently pinned to the profile
 });
