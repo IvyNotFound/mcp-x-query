@@ -17,13 +17,21 @@
 import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { TrendingTopicsSchema } from "../schemas/trending.js";
-import { TtlCache } from "../lib/cache.js";
+import { join } from "node:path";
+import { TtlCache, PersistentTtlCache } from "../lib/cache.js";
 import { escapeForPrompt } from "../lib/utils.js";
 
 // Trending topics rarely change within a 5-minute window; caching avoids
 // redundant API calls when the same category is queried in quick succession.
+// If CACHE_DIR is set the cache persists across server restarts (JSON file).
 // Exported so test suites can call cache.clear() between tests.
-export const trendingCache = new TtlCache<string, z.infer<typeof TrendingTopicsSchema>>(5 * 60_000);
+const CACHE_DIR = process.env.CACHE_DIR;
+export const trendingCache: TtlCache<string, z.infer<typeof TrendingTopicsSchema>> = CACHE_DIR
+  ? new PersistentTtlCache<z.infer<typeof TrendingTopicsSchema>>(
+      5 * 60_000,
+      join(CACHE_DIR, "trending.json")
+    )
+  : new TtlCache<string, z.infer<typeof TrendingTopicsSchema>>(5 * 60_000);
 
 /** MCP input schema for the get_trending tool. */
 export const GetTrendingInput = z.object({

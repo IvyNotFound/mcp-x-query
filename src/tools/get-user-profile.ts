@@ -17,12 +17,20 @@ import { z } from "zod";
 import type { GrokClient } from "../lib/grok-client.js";
 import { UserProfileSchema } from "../schemas/user.js";
 import { sanitizeUsername } from "../lib/utils.js";
-import { TtlCache } from "../lib/cache.js";
+import { join } from "node:path";
+import { TtlCache, PersistentTtlCache } from "../lib/cache.js";
 
 // User profiles change infrequently; a 10-minute TTL avoids duplicate API
 // calls when the same handle is resolved multiple times in a short session.
+// If CACHE_DIR is set the cache persists across server restarts (JSON file).
 // Exported so test suites can call profileCache.clear() between tests.
-export const profileCache = new TtlCache<string, z.infer<typeof UserProfileSchema>>(10 * 60_000);
+const CACHE_DIR = process.env.CACHE_DIR;
+export const profileCache: TtlCache<string, z.infer<typeof UserProfileSchema>> = CACHE_DIR
+  ? new PersistentTtlCache<z.infer<typeof UserProfileSchema>>(
+      10 * 60_000,
+      join(CACHE_DIR, "profile.json")
+    )
+  : new TtlCache<string, z.infer<typeof UserProfileSchema>>(10 * 60_000);
 
 /** MCP input schema for the get_user_profile tool. */
 export const GetUserProfileInput = z.object({
