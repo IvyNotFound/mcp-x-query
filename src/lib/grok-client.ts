@@ -75,7 +75,9 @@ export class GrokClient {
     // Convert the Zod schema to a flat JSON Schema object.
     // `$refStrategy:"none"` inlines all sub-schemas, preventing $ref / $defs
     // nodes that the Grok structured-output endpoint does not support.
-    const rawSchema = zodToJsonSchema(schema, {
+    // Cast: zod-to-json-schema expects the Zod v3 ZodType signature; Zod v4
+    // changed the generic parameters but the runtime behaviour is identical.
+    const rawSchema = zodToJsonSchema(schema as unknown as Parameters<typeof zodToJsonSchema>[0], {
       name: schemaName,
       $refStrategy: "none",
       target: "jsonSchema7",
