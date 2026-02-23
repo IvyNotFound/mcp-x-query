@@ -11,22 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ─── Type-check ──────────────────────────────────────────────────────────────
-  typecheck:
-    name: Type check
+  # ─── Lint ─────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
 
-      - name: tsc --noEmit
-        run: npx tsc --noEmit
+      - name: ESLint
+        run: npm run lint
 
   # ─── Build ───────────────────────────────────────────────────────────────────
   build:
@@ -37,10 +37,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Compile TypeScript
         run: npm run build
@@ -52,7 +55,7 @@ jobs:
           path: dist/
           retention-days: 1
 
-  # ─── Unit tests (mocked, no API key) ─────────────────────────────────────────
+  # ─── Unit tests with coverage gate (mocked, no API key) ──────────────────────
   test-unit:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -62,7 +65,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
@@ -73,23 +76,23 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
         # XAI_API_KEY intentionally absent → integration tests auto-skipped
+        # Coverage thresholds are enforced (see vitest.config.ts)
 
   # ─── Integration tests (real API, push to main only) ─────────────────────────
   test-integration:
     name: Integration tests
     runs-on: ubuntu-latest
     needs: build
-    # Only run on push to main where secrets are available
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RUN_INTEGRATION_TESTS == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
