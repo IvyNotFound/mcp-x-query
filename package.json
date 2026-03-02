@@ -24,12 +24,12 @@
     "zod-to-json-schema": "^3.25.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.19.13",
     "@vitest/coverage-v8": "^2.0.0",
     "dotenv": "^17.3.1",
     "eslint": "^9.0.0",
     "typescript": "^5.5.0",
-    "typescript-eslint": "^8.0.0",
+    "typescript-eslint": "^8.56.1",
     "vitest": "^2.0.0"
   }
 }
