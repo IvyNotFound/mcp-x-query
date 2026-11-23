@@ -18,10 +18,10 @@
     "test:all": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "openai": "^6.22.0",
-    "zod": "^4.3.6",
-    "zod-to-json-schema": "^3.25.0"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "openai": "^6.49.0",
+    "zod": "^4.6.7",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
